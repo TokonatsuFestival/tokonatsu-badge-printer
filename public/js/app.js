@@ -129,6 +129,7 @@ function initializeFormHandlers() {
         uidTimeout = setTimeout(() => {
             validateUID(e.target.value);
             updateFormValidity();
+            generateLiveBadgePreview();
         }, CONFIG.UID_CHECK_DEBOUNCE);
     });
     
@@ -139,10 +140,17 @@ function initializeFormHandlers() {
     });
     
     // Badge name validation
+    let badgeNameTimeout;
     elements.badgeNameInput.addEventListener('input', (e) => {
         validateBadgeName(e.target.value);
         updateCharacterCount(e.target.value);
         updateFormValidity();
+        
+        // Debounce live preview generation
+        clearTimeout(badgeNameTimeout);
+        badgeNameTimeout = setTimeout(() => {
+            generateLiveBadgePreview();
+        }, CONFIG.UID_CHECK_DEBOUNCE);
     });
     
     elements.badgeNameInput.addEventListener('blur', (e) => {
@@ -239,9 +247,25 @@ function renderTemplates(templates) {
         radio.value = template.id;
         label.setAttribute('for', radioId);
         
-        image.src = template.previewPath || '/images/template-placeholder.png';
+        // Use dynamic preview endpoint instead of static preview path
+        image.src = `/api/templates/${template.id}/preview`;
         image.alt = `Preview of ${template.name} template`;
+        image.onerror = function() {
+            // Fallback to placeholder if preview generation fails
+            this.src = '/images/template-placeholder.png';
+            this.alt = `${template.name} template (preview unavailable)`;
+        };
+        
         name.textContent = template.name;
+        
+        // Add template validation indicator
+        const validationIndicator = document.createElement('div');
+        validationIndicator.className = 'template-validation';
+        validationIndicator.innerHTML = '<span class="validation-status">Validating...</span>';
+        templateElement.querySelector('.template-info').appendChild(validationIndicator);
+        
+        // Validate template asynchronously
+        validateTemplateAsync(template.id, validationIndicator);
         
         elements.templateGrid.appendChild(templateElement);
     });
@@ -259,6 +283,9 @@ function handleTemplateSelection(event) {
             appState.selectedTemplate = template;
             updateTemplatePreview(template);
             updateFormValidity();
+            
+            // Generate live preview if form has data
+            generateLiveBadgePreview();
         }
     }
 }
@@ -267,6 +294,125 @@ function handleTemplateSelection(event) {
 function updateTemplatePreview(template) {
     // This could be enhanced to show a larger preview or update form fields
     console.log('Selected template:', template.name);
+    
+    // Add visual feedback for selected template
+    const templateItems = document.querySelectorAll('.template-item');
+    templateItems.forEach(item => {
+        const radio = item.querySelector('.template-radio');
+        if (radio && radio.value === template.id) {
+            item.classList.add('selected');
+        } else {
+            item.classList.remove('selected');
+        }
+    });
+}
+
+// Validate template asynchronously
+async function validateTemplateAsync(templateId, indicatorElement) {
+    try {
+        const response = await fetch(`/api/templates/${templateId}/validate`, {
+            method: 'POST'
+        });
+        
+        if (response.ok) {
+            const data = await response.json();
+            const validation = data.validation;
+            
+            if (validation.isValid) {
+                indicatorElement.innerHTML = '<span class="validation-status valid">✓ Valid</span>';
+                indicatorElement.className = 'template-validation valid';
+            } else {
+                indicatorElement.innerHTML = `<span class="validation-status invalid">✗ ${validation.error}</span>`;
+                indicatorElement.className = 'template-validation invalid';
+            }
+        } else {
+            indicatorElement.innerHTML = '<span class="validation-status error">Validation failed</span>';
+            indicatorElement.className = 'template-validation error';
+        }
+    } catch (error) {
+        console.error('Template validation error:', error);
+        indicatorElement.innerHTML = '<span class="validation-status error">Validation error</span>';
+        indicatorElement.className = 'template-validation error';
+    }
+}
+
+// Generate live badge preview
+async function generateLiveBadgePreview() {
+    if (!appState.selectedTemplate) {
+        return;
+    }
+    
+    const uidValue = elements.uidInput.value.trim();
+    const badgeNameValue = elements.badgeNameInput.value.trim();
+    
+    // Only generate preview if both fields have valid data
+    if (!uidValue || !badgeNameValue) {
+        return;
+    }
+    
+    // Check if we already have a preview container
+    let previewContainer = document.getElementById('live-preview-container');
+    if (!previewContainer) {
+        previewContainer = document.createElement('div');
+        previewContainer.id = 'live-preview-container';
+        previewContainer.className = 'live-preview-container';
+        previewContainer.innerHTML = `
+            <h4>Badge Preview</h4>
+            <div class="preview-content">
+                <img id="live-preview-image" alt="Badge preview" />
+                <div class="preview-loading">Generating preview...</div>
+            </div>
+        `;
+        
+        // Insert after the form section
+        const formSection = document.querySelector('.form-section:last-child');
+        formSection.parentNode.insertBefore(previewContainer, formSection.nextSibling);
+    }
+    
+    const previewImage = document.getElementById('live-preview-image');
+    const previewLoading = previewContainer.querySelector('.preview-loading');
+    
+    try {
+        previewLoading.style.display = 'block';
+        previewImage.style.display = 'none';
+        
+        const response = await fetch('/api/badges/preview', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                templateId: appState.selectedTemplate.id,
+                uid: uidValue,
+                badgeName: badgeNameValue
+            })
+        });
+        
+        if (response.ok) {
+            const blob = await response.blob();
+            const imageUrl = URL.createObjectURL(blob);
+            
+            previewImage.src = imageUrl;
+            previewImage.onload = () => {
+                previewLoading.style.display = 'none';
+                previewImage.style.display = 'block';
+            };
+            
+            // Clean up previous blob URL
+            if (previewImage.dataset.blobUrl) {
+                URL.revokeObjectURL(previewImage.dataset.blobUrl);
+            }
+            previewImage.dataset.blobUrl = imageUrl;
+            
+        } else {
+            throw new Error(`Preview generation failed: ${response.status}`);
+        }
+        
+    } catch (error) {
+        console.error('Live preview error:', error);
+        previewLoading.textContent = 'Preview unavailable';
+        previewImage.style.display = 'none';
+    }
 }
 
 // Validate UID with uniqueness checking

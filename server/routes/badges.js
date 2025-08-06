@@ -1,4 +1,6 @@
 const express = require('express');
+const TemplateProcessor = require('../services/TemplateProcessor');
+const Template = require('../models/Template');
 const router = express.Router();
 
 // Input validation middleware
@@ -70,11 +72,54 @@ router.post('/', validateBadgeInput, async (req, res, next) => {
   try {
     const { templateId, uid, badgeName } = req.body;
     const queueManager = req.app.get('queueManager');
+    const dbConnection = req.app.get('dbConnection');
     
     if (!queueManager) {
       return res.status(503).json({ 
         error: 'Service unavailable',
         message: 'The print queue service is not initialized'
+      });
+    }
+    
+    if (!dbConnection) {
+      return res.status(503).json({ 
+        error: 'Service unavailable',
+        message: 'Database connection is not available'
+      });
+    }
+    
+    // Validate template exists and is accessible
+    const templateModel = new Template(dbConnection);
+    const templateProcessor = new TemplateProcessor();
+    
+    try {
+      const template = await templateModel.findById(templateId);
+      if (!template) {
+        return res.status(404).json({
+          error: 'Template not found',
+          message: `Template with ID '${templateId}' does not exist`,
+          field: 'templateId'
+        });
+      }
+      
+      // Validate template file
+      await templateModel.validateTemplateFile(templateId);
+      
+      // Validate template configuration
+      const validationResult = await templateProcessor.validateTemplate(template.filePath);
+      if (!validationResult.isValid) {
+        return res.status(400).json({
+          error: 'Template validation failed',
+          message: validationResult.error,
+          field: 'templateId'
+        });
+      }
+      
+    } catch (templateError) {
+      return res.status(400).json({
+        error: 'Template validation failed',
+        message: templateError.message,
+        field: 'templateId'
       });
     }
     
@@ -111,6 +156,62 @@ router.post('/', validateBadgeInput, async (req, res, next) => {
       });
     }
     
+    next(error);
+  }
+});
+
+// POST /api/badges/preview - Generate badge preview without creating job
+router.post('/preview', validateBadgeInput, async (req, res, next) => {
+  try {
+    const { templateId, uid, badgeName } = req.body;
+    const dbConnection = req.app.get('dbConnection');
+    
+    if (!dbConnection) {
+      return res.status(503).json({ 
+        error: 'Service unavailable',
+        message: 'Database connection is not available'
+      });
+    }
+    
+    const templateModel = new Template(dbConnection);
+    const templateProcessor = new TemplateProcessor();
+    
+    // Validate template exists and is accessible
+    try {
+      const template = await templateModel.findById(templateId);
+      if (!template) {
+        return res.status(404).json({
+          error: 'Template not found',
+          message: `Template with ID '${templateId}' does not exist`,
+          field: 'templateId'
+        });
+      }
+      
+      // Validate template file
+      await templateModel.validateTemplateFile(templateId);
+      
+    } catch (templateError) {
+      return res.status(400).json({
+        error: 'Template validation failed',
+        message: templateError.message,
+        field: 'templateId'
+      });
+    }
+    
+    // Generate badge preview
+    const badgeBuffer = await templateProcessor.generateBadge(templateId, uid, badgeName, templateModel);
+    
+    // Set appropriate headers for image response
+    res.set({
+      'Content-Type': 'image/png',
+      'Content-Length': badgeBuffer.length,
+      'Cache-Control': 'no-cache', // Don't cache previews
+      'ETag': `"${templateId}-${uid}-${badgeName}"`
+    });
+    
+    res.send(badgeBuffer);
+    
+  } catch (error) {
     next(error);
   }
 });

@@ -231,15 +231,40 @@ class PrintQueueManager extends EventEmitter {
    */
   async executeJob(job) {
     try {
+      // Get template model from the badge job model's connection
+      const Template = require('../models/Template');
+      const templateModel = new Template(this.badgeJobModel.connection);
+      
       // Generate badge using template processor
-      const badgeDocument = await this.templateProcessor.generateBadge(
+      const badgeBuffer = await this.templateProcessor.generateBadge(
         job.templateId,
         job.uid,
-        job.badgeName
+        job.badgeName,
+        templateModel
       );
       
+      // Save badge to temporary file for printing
+      const path = require('path');
+      const fs = require('fs');
+      const tempDir = path.join(__dirname, '../../data/temp');
+      
+      // Ensure temp directory exists
+      if (!fs.existsSync(tempDir)) {
+        fs.mkdirSync(tempDir, { recursive: true });
+      }
+      
+      const tempFilePath = path.join(tempDir, `badge_${job.id}_${Date.now()}.png`);
+      await this.templateProcessor.saveBadgeToFile(badgeBuffer, tempFilePath);
+      
       // Send to printer
-      await this.printerInterface.printDocument(badgeDocument);
+      await this.printerInterface.printDocument(tempFilePath);
+      
+      // Clean up temporary file
+      try {
+        fs.unlinkSync(tempFilePath);
+      } catch (cleanupError) {
+        console.warn('Failed to clean up temporary file:', cleanupError.message);
+      }
       
       // Mark job as completed
       const completedJob = await this.badgeJobModel.updateStatus(job.id, 'completed');
