@@ -155,7 +155,13 @@ function initializeFormHandlers() {
     // Queue refresh button
     elements.refreshQueue.addEventListener('click', loadQueueStatus);
     
-    // Job list event delegation for cancel/retry buttons
+    // Job history button
+    const viewHistoryButton = document.getElementById('view-history');
+    if (viewHistoryButton) {
+        viewHistoryButton.addEventListener('click', showJobHistoryModal);
+    }
+    
+    // Job list event delegation for cancel/retry/intervention buttons
     elements.jobList.addEventListener('click', handleJobAction);
     
     // Update form validity on any input change
@@ -659,16 +665,33 @@ function renderJobList(jobs) {
         const cancelButton = jobElement.querySelector('.job-cancel');
         const retryButton = jobElement.querySelector('.job-retry');
         
+        // Add manual intervention button if not already present
+        let interventionButton = jobElement.querySelector('.job-manual-intervention');
+        if (!interventionButton) {
+            interventionButton = document.createElement('button');
+            interventionButton.className = 'btn btn-small btn-warning job-manual-intervention';
+            interventionButton.setAttribute('aria-label', 'Manual intervention');
+            interventionButton.textContent = 'Intervene';
+            jobElement.querySelector('.job-actions').appendChild(interventionButton);
+        }
+        
         if (job.status === 'failed') {
             cancelButton.style.display = 'none';
             retryButton.style.display = 'inline-block';
             retryButton.disabled = job.retryCount >= 3; // Max retries
+            interventionButton.style.display = 'inline-block';
         } else if (job.status === 'completed') {
             cancelButton.style.display = 'none';
             retryButton.style.display = 'none';
+            interventionButton.style.display = 'none';
+        } else if (job.status === 'processing') {
+            cancelButton.style.display = 'inline-block';
+            retryButton.style.display = 'none';
+            interventionButton.style.display = 'inline-block';
         } else {
             cancelButton.style.display = 'inline-block';
             retryButton.style.display = 'none';
+            interventionButton.style.display = 'none';
         }
         
         // Add error message if failed
@@ -683,22 +706,33 @@ function renderJobList(jobs) {
     });
 }
 
-// Handle job action buttons (cancel/retry)
+// Handle job action buttons (cancel/retry/manual intervention)
 async function handleJobAction(event) {
-    if (!event.target.matches('.job-cancel, .job-retry')) {
+    if (!event.target.matches('.job-cancel, .job-retry, .job-manual-intervention')) {
         return;
     }
     
     const jobItem = event.target.closest('.job-item');
     const jobId = jobItem.getAttribute('data-job-id');
+    const jobUid = jobItem.querySelector('.job-uid').textContent;
+    const jobName = jobItem.querySelector('.job-name').textContent;
     const isCancel = event.target.classList.contains('job-cancel');
     const isRetry = event.target.classList.contains('job-retry');
+    const isManualIntervention = event.target.classList.contains('job-manual-intervention');
     
     try {
         event.target.disabled = true;
         
         if (isCancel) {
-            if (!confirm('Are you sure you want to cancel this job?')) {
+            const confirmed = await showConfirmationDialog(
+                'Cancel Job',
+                `Are you sure you want to cancel the badge job for "${jobName}" (UID: ${jobUid})?`,
+                'This action cannot be undone.',
+                'Cancel Job',
+                'Keep Job'
+            );
+            
+            if (!confirmed) {
                 event.target.disabled = false;
                 return;
             }
@@ -708,12 +742,26 @@ async function handleJobAction(event) {
             });
             
             if (!response.ok) {
-                throw new Error(`Failed to cancel job: ${response.status}`);
+                const errorData = await response.json();
+                throw new Error(errorData.message || `Failed to cancel job: ${response.status}`);
             }
             
             showSuccessMessage('Job cancelled successfully');
             
         } else if (isRetry) {
+            const confirmed = await showConfirmationDialog(
+                'Retry Job',
+                `Retry the failed badge job for "${jobName}" (UID: ${jobUid})?`,
+                'The job will be added back to the queue for processing.',
+                'Retry Job',
+                'Cancel'
+            );
+            
+            if (!confirmed) {
+                event.target.disabled = false;
+                return;
+            }
+            
             const response = await fetch(`/api/jobs/${jobId}/retry`, {
                 method: 'POST'
             });
@@ -724,6 +772,11 @@ async function handleJobAction(event) {
             }
             
             showSuccessMessage('Job queued for retry');
+            
+        } else if (isManualIntervention) {
+            await showManualInterventionDialog(jobId, jobUid, jobName);
+            event.target.disabled = false;
+            return;
         }
         
     } catch (error) {
@@ -853,6 +906,430 @@ function formatTimestamp(timestamp) {
     return date.toLocaleTimeString();
 }
 
+// Show confirmation dialog
+function showConfirmationDialog(title, message, details, confirmText, cancelText) {
+    return new Promise((resolve) => {
+        // Create modal overlay
+        const overlay = document.createElement('div');
+        overlay.className = 'modal-overlay';
+        overlay.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 10000;
+        `;
+        
+        // Create modal dialog
+        const modal = document.createElement('div');
+        modal.className = 'confirmation-modal';
+        modal.style.cssText = `
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+            max-width: 400px;
+            width: 90%;
+            max-height: 90vh;
+            overflow-y: auto;
+        `;
+        
+        modal.innerHTML = `
+            <div class="modal-header" style="padding: 20px 20px 0 20px;">
+                <h3 style="margin: 0; color: #2c3e50; font-size: 1.2rem;">${title}</h3>
+            </div>
+            <div class="modal-body" style="padding: 15px 20px;">
+                <p style="margin: 0 0 10px 0; color: #34495e; line-height: 1.5;">${message}</p>
+                ${details ? `<p style="margin: 0; color: #7f8c8d; font-size: 0.9rem; line-height: 1.4;">${details}</p>` : ''}
+            </div>
+            <div class="modal-actions" style="padding: 0 20px 20px 20px; display: flex; gap: 10px; justify-content: flex-end;">
+                <button class="btn btn-secondary modal-cancel" style="min-width: 80px;">${cancelText}</button>
+                <button class="btn btn-danger modal-confirm" style="min-width: 80px;">${confirmText}</button>
+            </div>
+        `;
+        
+        overlay.appendChild(modal);
+        document.body.appendChild(overlay);
+        
+        // Focus the confirm button
+        const confirmButton = modal.querySelector('.modal-confirm');
+        const cancelButton = modal.querySelector('.modal-cancel');
+        
+        setTimeout(() => confirmButton.focus(), 100);
+        
+        // Handle button clicks
+        const handleConfirm = () => {
+            document.body.removeChild(overlay);
+            resolve(true);
+        };
+        
+        const handleCancel = () => {
+            document.body.removeChild(overlay);
+            resolve(false);
+        };
+        
+        confirmButton.addEventListener('click', handleConfirm);
+        cancelButton.addEventListener('click', handleCancel);
+        
+        // Handle escape key
+        const handleKeydown = (e) => {
+            if (e.key === 'Escape') {
+                handleCancel();
+            } else if (e.key === 'Enter' && e.target === confirmButton) {
+                handleConfirm();
+            }
+        };
+        
+        document.addEventListener('keydown', handleKeydown);
+        
+        // Cleanup function
+        const cleanup = () => {
+            document.removeEventListener('keydown', handleKeydown);
+        };
+        
+        // Add cleanup to both handlers
+        const originalHandleConfirm = handleConfirm;
+        const originalHandleCancel = handleCancel;
+        
+        confirmButton.onclick = () => {
+            cleanup();
+            originalHandleConfirm();
+        };
+        
+        cancelButton.onclick = () => {
+            cleanup();
+            originalHandleCancel();
+        };
+        
+        // Handle overlay click
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) {
+                cleanup();
+                handleCancel();
+            }
+        });
+    });
+}
+
+// Show manual intervention dialog
+async function showManualInterventionDialog(jobId, jobUid, jobName) {
+    return new Promise((resolve) => {
+        // Create modal overlay
+        const overlay = document.createElement('div');
+        overlay.className = 'modal-overlay';
+        overlay.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 10000;
+        `;
+        
+        // Create modal dialog
+        const modal = document.createElement('div');
+        modal.className = 'intervention-modal';
+        modal.style.cssText = `
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+            max-width: 500px;
+            width: 90%;
+            max-height: 90vh;
+            overflow-y: auto;
+        `;
+        
+        modal.innerHTML = `
+            <div class="modal-header" style="padding: 20px 20px 0 20px;">
+                <h3 style="margin: 0; color: #2c3e50; font-size: 1.2rem;">Manual Intervention Required</h3>
+            </div>
+            <div class="modal-body" style="padding: 15px 20px;">
+                <p style="margin: 0 0 15px 0; color: #34495e; line-height: 1.5;">
+                    Job for "${jobName}" (UID: ${jobUid}) requires manual intervention.
+                </p>
+                <p style="margin: 0 0 20px 0; color: #7f8c8d; font-size: 0.9rem; line-height: 1.4;">
+                    Choose an action to resolve this stuck job:
+                </p>
+                
+                <div class="intervention-options" style="display: flex; flex-direction: column; gap: 10px;">
+                    <label style="display: flex; align-items: center; padding: 10px; border: 2px solid #ecf0f1; border-radius: 6px; cursor: pointer; transition: border-color 0.2s;">
+                        <input type="radio" name="intervention-action" value="reset" style="margin-right: 10px;">
+                        <div>
+                            <strong style="color: #2c3e50;">Reset to Queue</strong>
+                            <div style="font-size: 0.85rem; color: #7f8c8d; margin-top: 2px;">
+                                Reset the job status to queued for automatic retry
+                            </div>
+                        </div>
+                    </label>
+                    
+                    <label style="display: flex; align-items: center; padding: 10px; border: 2px solid #ecf0f1; border-radius: 6px; cursor: pointer; transition: border-color 0.2s;">
+                        <input type="radio" name="intervention-action" value="complete" style="margin-right: 10px;">
+                        <div>
+                            <strong style="color: #27ae60;">Mark as Completed</strong>
+                            <div style="font-size: 0.85rem; color: #7f8c8d; margin-top: 2px;">
+                                Manually mark the job as completed (if printed externally)
+                            </div>
+                        </div>
+                    </label>
+                    
+                    <label style="display: flex; align-items: center; padding: 10px; border: 2px solid #ecf0f1; border-radius: 6px; cursor: pointer; transition: border-color 0.2s;">
+                        <input type="radio" name="intervention-action" value="fail" style="margin-right: 10px;">
+                        <div>
+                            <strong style="color: #e74c3c;">Mark as Failed</strong>
+                            <div style="font-size: 0.85rem; color: #7f8c8d; margin-top: 2px;">
+                                Permanently mark the job as failed
+                            </div>
+                        </div>
+                    </label>
+                </div>
+                
+                <div style="margin-top: 15px;">
+                    <label for="intervention-reason" style="display: block; font-weight: 500; color: #2c3e50; margin-bottom: 5px;">
+                        Reason (optional):
+                    </label>
+                    <textarea 
+                        id="intervention-reason" 
+                        placeholder="Enter reason for manual intervention..."
+                        style="width: 100%; padding: 8px 12px; border: 2px solid #ecf0f1; border-radius: 4px; font-size: 0.9rem; resize: vertical; min-height: 60px;"
+                    ></textarea>
+                </div>
+            </div>
+            <div class="modal-actions" style="padding: 0 20px 20px 20px; display: flex; gap: 10px; justify-content: flex-end;">
+                <button class="btn btn-secondary modal-cancel">Cancel</button>
+                <button class="btn btn-primary modal-apply" disabled>Apply Intervention</button>
+            </div>
+        `;
+        
+        overlay.appendChild(modal);
+        document.body.appendChild(overlay);
+        
+        // Get elements
+        const radioButtons = modal.querySelectorAll('input[name="intervention-action"]');
+        const reasonTextarea = modal.querySelector('#intervention-reason');
+        const applyButton = modal.querySelector('.modal-apply');
+        const cancelButton = modal.querySelector('.modal-cancel');
+        
+        // Handle radio button selection
+        radioButtons.forEach(radio => {
+            radio.addEventListener('change', () => {
+                applyButton.disabled = false;
+                
+                // Update label styling
+                modal.querySelectorAll('label').forEach(label => {
+                    label.style.borderColor = '#ecf0f1';
+                    label.style.backgroundColor = 'white';
+                });
+                
+                const selectedLabel = radio.closest('label');
+                selectedLabel.style.borderColor = '#3498db';
+                selectedLabel.style.backgroundColor = '#f8f9fa';
+            });
+        });
+        
+        // Handle apply button
+        applyButton.addEventListener('click', async () => {
+            const selectedAction = modal.querySelector('input[name="intervention-action"]:checked');
+            if (!selectedAction) return;
+            
+            const action = selectedAction.value;
+            const reason = reasonTextarea.value.trim();
+            
+            try {
+                applyButton.disabled = true;
+                applyButton.textContent = 'Applying...';
+                
+                const response = await fetch(`/api/jobs/${jobId}/manual-intervention`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ action, reason })
+                });
+                
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.message || `Failed to apply intervention: ${response.status}`);
+                }
+                
+                const result = await response.json();
+                showSuccessMessage(`Manual intervention applied: ${result.intervention.action}`);
+                
+                document.body.removeChild(overlay);
+                resolve(true);
+                
+            } catch (error) {
+                console.error('Manual intervention error:', error);
+                showGlobalError(error.message);
+                applyButton.disabled = false;
+                applyButton.textContent = 'Apply Intervention';
+            }
+        });
+        
+        // Handle cancel button
+        cancelButton.addEventListener('click', () => {
+            document.body.removeChild(overlay);
+            resolve(false);
+        });
+        
+        // Handle escape key
+        const handleKeydown = (e) => {
+            if (e.key === 'Escape') {
+                document.body.removeChild(overlay);
+                resolve(false);
+            }
+        };
+        
+        document.addEventListener('keydown', handleKeydown);
+        
+        // Handle overlay click
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) {
+                document.body.removeChild(overlay);
+                resolve(false);
+            }
+        });
+        
+        // Cleanup on modal removal
+        const observer = new MutationObserver((mutations) => {
+            mutations.forEach((mutation) => {
+                if (mutation.type === 'childList' && !document.body.contains(overlay)) {
+                    document.removeEventListener('keydown', handleKeydown);
+                    observer.disconnect();
+                }
+            });
+        });
+        
+        observer.observe(document.body, { childList: true });
+    });
+}
+
+// Load job history
+async function loadJobHistory(status = null, limit = 50, offset = 0) {
+    try {
+        let url = `/api/jobs/history?limit=${limit}&offset=${offset}`;
+        if (status) {
+            url += `&status=${status}`;
+        }
+        
+        const response = await fetch(url);
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        return data;
+        
+    } catch (error) {
+        console.error('Failed to load job history:', error);
+        throw error;
+    }
+}
+
+// Show job history modal
+async function showJobHistoryModal() {
+    try {
+        const historyData = await loadJobHistory();
+        
+        // Create modal overlay
+        const overlay = document.createElement('div');
+        overlay.className = 'modal-overlay';
+        overlay.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 10000;
+        `;
+        
+        // Create modal dialog
+        const modal = document.createElement('div');
+        modal.className = 'history-modal';
+        modal.style.cssText = `
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+            max-width: 800px;
+            width: 90%;
+            max-height: 80vh;
+            display: flex;
+            flex-direction: column;
+        `;
+        
+        const jobsHtml = historyData.jobs.map(job => `
+            <div class="history-job-item" style="display: flex; justify-content: space-between; align-items: center; padding: 12px; border-bottom: 1px solid #ecf0f1;">
+                <div style="flex: 1;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                        <span style="font-weight: 600; color: #2c3e50; font-family: 'Courier New', monospace;">${job.uid}</span>
+                        <span class="job-status status-${job.status}" style="padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 500; text-transform: uppercase;">
+                            ${formatJobStatus(job.status)}
+                        </span>
+                    </div>
+                    <div style="font-size: 0.9rem; color: #7f8c8d; margin-bottom: 2px;">
+                        <span style="font-weight: 500;">${job.badgeName}</span>
+                    </div>
+                    <div style="font-size: 0.8rem; color: #95a5a6;">
+                        ${job.processedAt ? formatTimestamp(job.processedAt) : formatTimestamp(job.createdAt)}
+                        ${job.retryCount > 0 ? ` • ${job.retryCount} retries` : ''}
+                    </div>
+                    ${job.errorMessage ? `<div style="font-size: 0.8rem; color: #e74c3c; background: #fdf2f2; padding: 4px 8px; border-radius: 4px; margin-top: 4px; border-left: 3px solid #e74c3c;">${job.errorMessage}</div>` : ''}
+                </div>
+            </div>
+        `).join('');
+        
+        modal.innerHTML = `
+            <div class="modal-header" style="padding: 20px; border-bottom: 1px solid #ecf0f1;">
+                <h3 style="margin: 0; color: #2c3e50; font-size: 1.3rem;">Job History</h3>
+                <p style="margin: 5px 0 0 0; color: #7f8c8d; font-size: 0.9rem;">
+                    Showing ${historyData.jobs.length} of ${historyData.pagination.total} completed and failed jobs
+                </p>
+            </div>
+            <div class="modal-body" style="flex: 1; overflow-y: auto; min-height: 200px;">
+                ${historyData.jobs.length > 0 ? jobsHtml : '<div style="padding: 40px; text-align: center; color: #7f8c8d; font-style: italic;">No job history available</div>'}
+            </div>
+            <div class="modal-actions" style="padding: 20px; border-top: 1px solid #ecf0f1; display: flex; justify-content: flex-end;">
+                <button class="btn btn-secondary modal-close">Close</button>
+            </div>
+        `;
+        
+        overlay.appendChild(modal);
+        document.body.appendChild(overlay);
+        
+        // Handle close button
+        modal.querySelector('.modal-close').addEventListener('click', () => {
+            document.body.removeChild(overlay);
+        });
+        
+        // Handle escape key and overlay click
+        const handleClose = (e) => {
+            if (e.key === 'Escape' || e.target === overlay) {
+                document.body.removeChild(overlay);
+                document.removeEventListener('keydown', handleClose);
+            }
+        };
+        
+        document.addEventListener('keydown', handleClose);
+        overlay.addEventListener('click', handleClose);
+        
+    } catch (error) {
+        console.error('Failed to show job history:', error);
+        showGlobalError('Failed to load job history');
+    }
+}
+
 // Export functions for testing
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
@@ -860,6 +1337,8 @@ if (typeof module !== 'undefined' && module.exports) {
         validateBadgeName,
         updateCharacterCount,
         isFormValid,
+        showConfirmationDialog,
+        loadJobHistory,
         CONFIG
     };
 }

@@ -191,8 +191,19 @@ class PrintQueueManager extends EventEmitter {
       
       this.currentJob = nextJob;
       
-      // Update job status to processing
-      const processingJob = await this.badgeJobModel.updateStatus(nextJob.id, 'processing');
+      // Update job status to processing - handle case where job was deleted
+      let processingJob;
+      try {
+        processingJob = await this.badgeJobModel.updateStatus(nextJob.id, 'processing');
+      } catch (error) {
+        if (error.message.includes('not found')) {
+          // Job was deleted while we were trying to process it, skip it
+          this.currentJob = null;
+          setTimeout(() => this.processNextJob(), 100);
+          return;
+        }
+        throw error;
+      }
       
       // Set processing timeout
       this.setProcessingTimer(processingJob);

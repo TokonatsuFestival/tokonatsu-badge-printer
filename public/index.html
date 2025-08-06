@@ -99,9 +99,14 @@
                 <div class="queue-container">
                     <div class="queue-header">
                         <h3>Current Jobs</h3>
-                        <button class="btn btn-small btn-secondary" id="refresh-queue" aria-label="Refresh queue">
-                            Refresh
-                        </button>
+                        <div class="queue-actions">
+                            <button class="btn btn-small btn-secondary" id="view-history" aria-label="View job history">
+                                History
+                            </button>
+                            <button class="btn btn-small btn-secondary" id="refresh-queue" aria-label="Refresh queue">
+                                Refresh
+                            </button>
+                        </div>
                     </div>
                     
                     <div class="job-list" id="job-list" role="log" aria-live="polite" aria-label="Print job status updates">

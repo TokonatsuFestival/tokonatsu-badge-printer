@@ -332,6 +332,15 @@ section h2 {
     background: #c0392b;
 }
 
+.btn-warning {
+    background: #f39c12;
+    color: white;
+}
+
+.btn-warning:hover:not(:disabled) {
+    background: #e67e22;
+}
+
 .btn-small {
     padding: 6px 12px;
     font-size: 0.85rem;
@@ -400,6 +409,11 @@ section h2 {
     justify-content: space-between;
     align-items: center;
     border-bottom: 1px solid #ecf0f1;
+}
+
+.queue-actions {
+    display: flex;
+    gap: 10px;
 }
 
 .queue-header h3 {
