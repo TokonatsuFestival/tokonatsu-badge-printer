@@ -153,7 +153,8 @@ router.get('/:id/preview', async (req, res, next) => {
     }
     
     // Generate preview
-    const previewBuffer = await templateProcessor.getTemplatePreview(id, templateModel);
+    const badgeImage = req.query.badgeImage;
+    const previewBuffer = await templateProcessor.getTemplatePreview(id, templateModel, badgeImage);
     
     // Set appropriate headers for image response
     res.set({
@@ -217,6 +218,73 @@ router.post('/:id/validate', async (req, res, next) => {
         filePath: template.filePath
       },
       validation: validationResult
+    });
+    
+  } catch (error) {
+    next(error);
+  }
+});
+
+// PUT /api/templates/:id/text-fields - Update template text field positions
+router.put('/:id/text-fields', async (req, res, next) => {
+  try {
+    let { id } = req.params;
+    const { textFields } = req.body;
+    
+    id = decodeURIComponent(id).trim();
+    
+    if (!id || typeof id !== 'string' || id === '') {
+      return res.status(400).json({
+        error: 'Invalid template ID',
+        message: 'Template ID must be a non-empty string'
+      });
+    }
+    
+    if (!Array.isArray(textFields)) {
+      return res.status(400).json({
+        error: 'Invalid text fields',
+        message: 'Text fields must be an array'
+      });
+    }
+    
+    const dbConnection = req.app.get('dbConnection');
+    
+    if (!dbConnection) {
+      return res.status(503).json({ 
+        error: 'Service unavailable',
+        message: 'Database connection is not available'
+      });
+    }
+    
+    const templateModel = new Template(dbConnection);
+    
+    // Check if template exists
+    const template = await templateModel.findById(id);
+    if (!template) {
+      return res.status(404).json({
+        error: 'Template not found',
+        message: `Template with ID '${id}' does not exist`
+      });
+    }
+    
+    // Update text fields
+    const textFieldsJson = JSON.stringify(textFields);
+    console.log('Updating template:', id, 'with textFields:', textFieldsJson);
+    
+    const result = await dbConnection.run(
+      'UPDATE templates SET text_fields = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+      [textFieldsJson, id]
+    );
+    
+    console.log('Database update result:', result);
+    
+    res.json({
+      message: 'Text fields updated successfully',
+      template: {
+        id: template.id,
+        name: template.name,
+        textFields: textFields
+      }
     });
     
   } catch (error) {

@@ -112,6 +112,7 @@ app.use('/api/queue', require('./routes/queue'));
 app.use('/api/jobs', require('./routes/jobs'));
 app.use('/api/templates', require('./routes/templates'));
 app.use('/api/printers', require('./routes/printers'));
+app.use('/api/badge-images', require('./routes/badge-images'));
 
 // Main route
 app.get('/', (req, res) => {

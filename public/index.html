@@ -37,7 +37,18 @@
 
                     <div class="form-section">
                         <h3>Badge Information</h3>
+                        <div class="form-section">
+                            <h3>Badge Image Selection</h3>
+                            <div class="image-selection" role="radiogroup" aria-labelledby="image-selection-label">
+                                <label id="image-selection-label" class="sr-only">Select badge image</label>
+                                <div class="image-grid" id="image-grid">
+                                    <div class="image-loading">Loading images...</div>
+                                </div>
+                            </div>
+                        </div>
+
                         <div class="form-row">
+                            
                             <div class="form-group">
                                 <label for="uid-input">Unique ID (UID)</label>
                                 <input 
@@ -179,6 +190,7 @@
                     <button class="tab-button active" data-tab="discovery" aria-controls="discovery-panel">Discovery</button>
                     <button class="tab-button" data-tab="status" aria-controls="status-panel">Status</button>
                     <button class="tab-button" data-tab="presets" aria-controls="presets-panel">Presets</button>
+                    <button class="tab-button" data-tab="text-positioning" aria-controls="text-positioning-panel">Text Position</button>
                     <button class="tab-button" data-tab="troubleshooting" aria-controls="troubleshooting-panel">Help</button>
                 </div>
 
@@ -222,6 +234,48 @@
                         <h3>Printer Presets</h3>
                         <div class="presets-list" id="presets-list">
                             <div class="presets-loading">Loading available presets...</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Text Positioning Tab -->
+                <div class="tab-panel" id="text-positioning-panel" role="tabpanel" aria-labelledby="text-positioning-tab">
+                    <div class="panel-section">
+                        <h3>Text Field Positioning</h3>
+                        
+                        <div class="visual-editor">
+                            <div class="editor-canvas">
+                                <canvas id="position-editor" width="613" height="400"></canvas>
+                                <div class="editor-controls">
+                                    <button class="btn btn-small" id="toggle-badge-name">Toggle Badge Name</button>
+                                    <button class="btn btn-small" id="toggle-uid">Toggle UID</button>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="positioning-controls">
+                            <div class="field-group">
+                                <h4>Badge Name</h4>
+                                <div class="position-inputs">
+                                    <label>X: <input type="number" id="badge-name-x" value="100" min="0" max="1226"></label>
+                                    <label>Y: <input type="number" id="badge-name-y" value="300" min="0" max="799"></label>
+                                    <label>Size: <input type="number" id="badge-name-size" value="28" min="8" max="72"></label>
+                                </div>
+                            </div>
+                            
+                            <div class="field-group">
+                                <h4>UID</h4>
+                                <div class="position-inputs">
+                                    <label>X: <input type="number" id="uid-x" value="100" min="0" max="1226"></label>
+                                    <label>Y: <input type="number" id="uid-y" value="700" min="0" max="799"></label>
+                                    <label>Size: <input type="number" id="uid-size" value="12" min="8" max="72"></label>
+                                </div>
+                            </div>
+                            
+                            <div class="positioning-actions">
+                                <button class="btn btn-primary" id="update-positions">Update Positions</button>
+                                <button class="btn btn-secondary" id="reset-positions">Reset to Default</button>
+                            </div>
                         </div>
                     </div>
                 </div>

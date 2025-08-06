@@ -179,7 +179,7 @@ section h2 {
 }
 
 .template-preview {
-    aspect-ratio: 3/4;
+    height: 120px;
     background: #f8f9fa;
     display: flex;
     align-items: center;
@@ -189,8 +189,10 @@ section h2 {
 
 .template-image {
     max-width: 100%;
-    max-height: 100%;
-    object-fit: cover;
+    max-height: 120px;
+    object-fit: contain;
+    width: auto;
+    height: auto;
 }
 
 .template-info {
@@ -738,14 +740,15 @@ footer {
     left: 0;
     width: 100%;
     height: 100%;
-    z-index: 1000;
+    z-index: 10000;
     display: none;
     align-items: center;
     justify-content: center;
+    background: rgba(0, 0, 0, 0.5);
 }
 
 .modal.active {
-    display: flex;
+    display: flex !important;
 }
 
 .modal-overlay {
@@ -1189,6 +1192,112 @@ footer {
     }
 }
 
+/* Text positioning controls */
+.positioning-controls {
+    max-width: 500px;
+}
+
+.field-group {
+    margin-bottom: 25px;
+    padding: 15px;
+    background: #f8f9fa;
+    border-radius: 8px;
+    border-left: 4px solid #3498db;
+}
+
+.field-group h4 {
+    color: #2c3e50;
+    margin-bottom: 10px;
+    font-size: 1rem;
+}
+
+.position-inputs {
+    display: flex;
+    gap: 15px;
+    flex-wrap: wrap;
+}
+
+.position-inputs label {
+    display: flex;
+    flex-direction: column;
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: #2c3e50;
+}
+
+.position-inputs input {
+    margin-top: 4px;
+    padding: 6px 8px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    width: 80px;
+    font-size: 0.9rem;
+}
+
+.positioning-actions {
+    margin-top: 20px;
+    display: flex;
+    gap: 10px;
+}
+
+/* Visual editor styles */
+.visual-editor {
+    margin-bottom: 25px;
+    border: 2px solid #ecf0f1;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.editor-canvas {
+    position: relative;
+    background: #f8f9fa;
+}
+
+#position-editor {
+    display: block;
+    cursor: crosshair;
+    border: none;
+}
+
+.editor-controls {
+    padding: 10px;
+    background: white;
+    border-top: 1px solid #ecf0f1;
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+}
+
+.text-element {
+    position: absolute;
+    border: 2px dashed #3498db;
+    background: rgba(52, 152, 219, 0.1);
+    cursor: move;
+    min-width: 50px;
+    min-height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    color: #2c3e50;
+}
+
+.text-element.selected {
+    border-color: #e74c3c;
+    background: rgba(231, 76, 60, 0.1);
+}
+
+.text-element .resize-handle {
+    position: absolute;
+    bottom: -5px;
+    right: -5px;
+    width: 10px;
+    height: 10px;
+    background: #3498db;
+    cursor: se-resize;
+    border-radius: 2px;
+}
+
 /* Reduced motion support */
 @media (prefers-reduced-motion: reduce) {
     * {
@@ -1227,6 +1336,80 @@ late validation styles */
 }
 
 .template-item.selected .template-label {
+    background-color: rgba(52, 152, 219, 0.05);
+}
+
+/* Image selection styles */
+.image-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 15px;
+}
+
+.image-item {
+    position: relative;
+}
+
+.image-radio {
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.image-label {
+    display: block;
+    cursor: pointer;
+    border: 2px solid #ecf0f1;
+    border-radius: 8px;
+    overflow: hidden;
+    transition: all 0.2s ease;
+    background: white;
+}
+
+.image-label:hover {
+    border-color: #3498db;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(52, 152, 219, 0.15);
+}
+
+.image-radio:checked + .image-label {
+    border-color: #3498db;
+    background: #ebf3fd;
+}
+
+.image-preview {
+    aspect-ratio: 3/2;
+    background: #f8f9fa;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+}
+
+.badge-image {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: cover;
+}
+
+.image-info {
+    padding: 8px;
+    text-align: center;
+}
+
+.image-name {
+    font-weight: 500;
+    color: #2c3e50;
+    font-size: 0.85rem;
+}
+
+.image-item.selected {
+    border-color: #3498db;
+    box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.2);
+}
+
+.image-item.selected .image-label {
     background-color: rgba(52, 152, 219, 0.05);
 }
 

@@ -40,7 +40,7 @@ class TemplateProcessor {
    * @param {Object} templateModel - Template model instance
    * @returns {Buffer} Generated badge as PNG buffer
    */
-  async generateBadge(templateId, uid, badgeName, templateModel) {
+  async generateBadge(templateId, uid, badgeName, templateModel, badgeImage = null) {
     try {
       const template = await this.loadTemplate(templateId, templateModel);
       
@@ -53,25 +53,68 @@ class TemplateProcessor {
         throw new Error('Badge name is required and must be a non-empty string');
       }
 
-      // Create canvas with default dimensions (can be customized per template)
-      const canvas = createCanvas(this.defaultCanvasWidth, this.defaultCanvasHeight);
+      // Create canvas with actual badge dimensions
+      const canvas = createCanvas(1226, 799); // Actual badge dimensions
       const ctx = canvas.getContext('2d');
 
-      // Set background
-      ctx.fillStyle = this.defaultBackgroundColor;
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      // Try to load background image
+      let backgroundPath;
+      if (badgeImage) {
+        backgroundPath = path.join(__dirname, '../../public/images/badges', badgeImage);
+        console.log('Looking for badge image at:', backgroundPath);
+      } else {
+        const templateDir = path.dirname(template.filePath || template.file_path || '');
+        backgroundPath = path.join(templateDir, 'background.png');
+      }
+      
+      try {
+        if (fs.existsSync(backgroundPath)) {
+          console.log('Loading background image:', backgroundPath);
+          const backgroundImage = await loadImage(backgroundPath);
+          ctx.drawImage(backgroundImage, 0, 0, canvas.width, canvas.height);
+        } else {
+          console.log('Background image not found, using default');
+          // Default background with badge-like styling
+          ctx.fillStyle = '#f8f9fa';
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          
+          // Add border
+          ctx.strokeStyle = '#dee2e6';
+          ctx.lineWidth = 3;
+          ctx.strokeRect(0, 0, canvas.width, canvas.height);
+        }
+      } catch (error) {
+        console.log('Error loading background:', error.message);
+        // Fallback to simple background
+        ctx.fillStyle = '#f8f9fa';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+      }
 
-      // Add border for visual clarity
-      ctx.strokeStyle = '#cccccc';
-      ctx.lineWidth = 2;
-      ctx.strokeRect(1, 1, canvas.width - 2, canvas.height - 2);
+      // Parse text fields configuration
+      let textFields;
+      try {
+        textFields = typeof template.textFields === 'string' 
+          ? JSON.parse(template.textFields) 
+          : template.textFields;
+      } catch (e) {
+        textFields = [];
+      }
+
+      // Find configurations for uid and badgeName
+      const uidField = textFields.find(field => field.name === 'uid');
+      const badgeNameField = textFields.find(field => field.name === 'badgeName');
+      
+      console.log('Using text fields from database:', textFields);
+      
+      const uidConfig = uidField || { x: 100, y: 700, fontSize: 24, fontFamily: 'Arial' };
+      const badgeNameConfig = badgeNameField || { x: 100, y: 300, fontSize: 56, fontFamily: 'Arial Bold' };
+      
+      console.log('Final text configs:', { uidConfig, badgeNameConfig });
 
       // Render UID text
-      const uidConfig = template.textFields.uid;
       this.renderText(ctx, uid.trim(), uidConfig);
 
       // Render badge name text
-      const badgeNameConfig = template.textFields.badgeName;
       this.renderText(ctx, badgeName.trim(), badgeNameConfig);
 
       // Convert canvas to buffer
@@ -87,23 +130,24 @@ class TemplateProcessor {
    * @param {Object} templateModel - Template model instance
    * @returns {Buffer} Preview image as PNG buffer
    */
-  async getTemplatePreview(templateId, templateModel) {
+  async getTemplatePreview(templateId, templateModel, badgeImage = null) {
     try {
       // Generate preview with sample data
       const previewBuffer = await this.generateBadge(
         templateId, 
         'SAMPLE123', 
         'John Doe', 
-        templateModel
+        templateModel,
+        badgeImage
       );
 
       // Add preview overlay to indicate it's a sample
-      const canvas = createCanvas(this.defaultCanvasWidth, this.defaultCanvasHeight);
+      const canvas = createCanvas(1226, 799);
       const ctx = canvas.getContext('2d');
 
       // Load the generated badge
-      const badgeImage = await loadImage(previewBuffer);
-      ctx.drawImage(badgeImage, 0, 0);
+      const badgeImageBuffer = await loadImage(previewBuffer);
+      ctx.drawImage(badgeImageBuffer, 0, 0);
 
       // Add semi-transparent overlay
       ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';

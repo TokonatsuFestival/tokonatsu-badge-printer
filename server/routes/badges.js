@@ -124,7 +124,8 @@ router.post('/', validateBadgeInput, async (req, res, next) => {
     }
     
     // Add job to queue (this will handle UID uniqueness validation)
-    const job = await queueManager.addJob({ templateId, uid, badgeName });
+    const { badgeImage } = req.body;
+    const job = await queueManager.addJob({ templateId, uid, badgeName, badgeImage });
     
     res.status(201).json({
       message: 'Badge job added to queue successfully',
@@ -199,7 +200,8 @@ router.post('/preview', validateBadgeInput, async (req, res, next) => {
     }
     
     // Generate badge preview
-    const badgeBuffer = await templateProcessor.generateBadge(templateId, uid, badgeName, templateModel);
+    const { badgeImage } = req.body;
+    const badgeBuffer = await templateProcessor.generateBadge(templateId, uid, badgeName, templateModel, badgeImage);
     
     // Set appropriate headers for image response
     res.set({

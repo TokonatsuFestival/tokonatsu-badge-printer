@@ -240,7 +240,8 @@ class PrintQueueManager extends EventEmitter {
         job.templateId,
         job.uid,
         job.badgeName,
-        templateModel
+        templateModel,
+        job.badgeImage
       );
       
       // Save badge to temporary file for printing

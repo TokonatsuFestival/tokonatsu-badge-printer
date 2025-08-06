@@ -7,7 +7,7 @@ class BadgeJob {
 
   // Create a new badge job
   async create(jobData) {
-    const { templateId, uid, badgeName } = jobData;
+    const { templateId, uid, badgeName, badgeImage } = jobData;
     
     // Validate required fields
     if (!templateId || !uid || !badgeName) {
@@ -28,11 +28,11 @@ class BadgeJob {
     const createdAt = new Date().toISOString();
 
     const sql = `
-      INSERT INTO badge_jobs (id, template_id, uid, badge_name, status, created_at, retry_count)
-      VALUES (?, ?, ?, ?, 'queued', ?, 0)
+      INSERT INTO badge_jobs (id, template_id, uid, badge_name, badge_image, status, created_at, retry_count)
+      VALUES (?, ?, ?, ?, ?, 'queued', ?, 0)
     `;
 
-    await this.connection.run(sql, [id, templateId, uid, badgeName, createdAt]);
+    await this.connection.run(sql, [id, templateId, uid, badgeName, badgeImage, createdAt]);
     
     return await this.findById(id);
   }
@@ -182,6 +182,7 @@ class BadgeJob {
       templateId: row.template_id,
       uid: row.uid,
       badgeName: row.badge_name,
+      badgeImage: row.badge_image,
       status: row.status,
       createdAt: new Date(row.created_at),
       processedAt: row.processed_at ? new Date(row.processed_at) : null,

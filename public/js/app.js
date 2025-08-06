@@ -88,9 +88,19 @@ document.addEventListener('DOMContentLoaded', () => {
     initializeElements();
     initializeFormHandlers();
     loadTemplates();
+    loadBadgeImages();
     loadUsedUIDs();
     loadQueueStatus();
     checkInitialPrinterStatus();
+    
+    // Setup printer modal button
+    const setupButton = document.getElementById('printer-setup-btn');
+    if (setupButton) {
+        setupButton.onclick = function(e) {
+            e.preventDefault();
+            showPrinterSetupModal();
+        };
+    }
 });
 
 // Initialize DOM element references
@@ -170,11 +180,7 @@ function initializeFormHandlers() {
         viewHistoryButton.addEventListener('click', showJobHistoryModal);
     }
     
-    // Printer setup button
-    const printerSetupButton = document.getElementById('printer-setup-btn');
-    if (printerSetupButton) {
-        printerSetupButton.addEventListener('click', showPrinterSetupModal);
-    }
+
     
     // Job list event delegation for cancel/retry/intervention buttons
     elements.jobList.addEventListener('click', handleJobAction);
@@ -182,6 +188,101 @@ function initializeFormHandlers() {
     // Update form validity on any input change
     elements.form.addEventListener('input', updateFormValidity);
     elements.form.addEventListener('change', updateFormValidity);
+}
+
+// Load available badge images
+async function loadBadgeImages() {
+    try {
+        const response = await fetch('/api/badge-images');
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        const images = data.images || [];
+        
+        renderImageGrid(images);
+        
+    } catch (error) {
+        console.error('Failed to load badge images:', error);
+        const imageGrid = document.getElementById('image-grid');
+        if (imageGrid) {
+            imageGrid.innerHTML = '<div class="image-loading" style="color: #e74c3c;">Failed to load images</div>';
+        }
+    }
+}
+
+// Render image selection grid
+function renderImageGrid(images) {
+    const imageGrid = document.getElementById('image-grid');
+    
+    if (images.length === 0) {
+        imageGrid.innerHTML = '<div class="image-loading">No images available</div>';
+        return;
+    }
+    
+    imageGrid.innerHTML = '';
+    
+    images.forEach((image, index) => {
+        const imageItem = document.createElement('div');
+        imageItem.className = 'image-item';
+        
+        const radioId = `image-${index}`;
+        imageItem.innerHTML = `
+            <input type="radio" name="badgeImage" class="image-radio" id="${radioId}" value="${image.filename}">
+            <label class="image-label" for="${radioId}">
+                <div class="image-preview">
+                    <img src="${image.path}" alt="${image.name}" class="badge-image">
+                </div>
+                <div class="image-info">
+                    <span class="image-name">${image.name}</span>
+                </div>
+            </label>
+        `;
+        
+        imageGrid.appendChild(imageItem);
+    });
+    
+    // Add event listener for image selection
+    imageGrid.addEventListener('change', handleImageSelection);
+}
+
+// Handle image selection
+function handleImageSelection(event) {
+    if (event.target.type === 'radio' && event.target.name === 'badgeImage') {
+        const selectedImage = event.target.value;
+        appState.selectedImage = selectedImage;
+        
+        // Update visual feedback
+        const imageItems = document.querySelectorAll('.image-item');
+        imageItems.forEach(item => {
+            const radio = item.querySelector('.image-radio');
+            if (radio && radio.value === selectedImage) {
+                item.classList.add('selected');
+            } else {
+                item.classList.remove('selected');
+            }
+        });
+        
+        updateFormValidity();
+        generateLiveBadgePreview();
+        updateTemplateImages();
+        
+        // Update visual editor if open
+        if (visualEditor.canvas) {
+            loadBadgeImageForEditor();
+        }
+    }
+}
+
+// Update template preview images with selected background
+function updateTemplateImages() {
+    const templateImages = document.querySelectorAll('.template-image');
+    templateImages.forEach(image => {
+        const templateId = image.closest('.template-item').querySelector('.template-radio').value;
+        const imageParam = appState.selectedImage ? `?badgeImage=${appState.selectedImage}` : '';
+        image.src = `/api/templates/${templateId}/preview${imageParam}`;
+    });
 }
 
 // Load available templates
@@ -194,9 +295,10 @@ async function loadTemplates() {
             throw new Error(`HTTP error! status: ${response.status}`);
         }
         
-        const templates = await response.json();
-        appState.templates = templates;
-        renderTemplates(templates);
+        const data = await response.json();
+        const templates = data.templates || [];
+        appState.templates = Array.isArray(templates) ? templates : [];
+        renderTemplates(appState.templates);
         
     } catch (error) {
         console.error('Failed to load templates:', error);
@@ -216,7 +318,8 @@ async function loadUsedUIDs() {
         }
         
         const queueData = await response.json();
-        appState.usedUIDs = new Set(queueData.jobs.map(job => job.uid));
+        const jobs = queueData.jobs || [];
+        appState.usedUIDs = new Set(jobs.map(job => job.uid));
         
     } catch (error) {
         console.error('Failed to load used UIDs:', error);
@@ -247,13 +350,12 @@ function renderTemplates(templates) {
         radio.value = template.id;
         label.setAttribute('for', radioId);
         
-        // Use dynamic preview endpoint instead of static preview path
-        image.src = `/api/templates/${template.id}/preview`;
+        // Use dynamic preview endpoint with selected image
+        const imageParam = appState.selectedImage ? `?badgeImage=${appState.selectedImage}` : '';
+        image.src = `/api/templates/${template.id}/preview${imageParam}`;
         image.alt = `Preview of ${template.name} template`;
         image.onerror = function() {
-            // Fallback to placeholder if preview generation fails
-            this.src = '/images/template-placeholder.png';
-            this.alt = `${template.name} template (preview unavailable)`;
+            this.style.display = 'none';
         };
         
         name.textContent = template.name;
@@ -384,7 +486,8 @@ async function generateLiveBadgePreview() {
             body: JSON.stringify({
                 templateId: appState.selectedTemplate.id,
                 uid: uidValue,
-                badgeName: badgeNameValue
+                badgeName: badgeNameValue,
+                badgeImage: appState.selectedImage
             })
         });
         
@@ -566,7 +669,8 @@ async function handleFormSubmit(event) {
     const formData = {
         templateId: appState.selectedTemplate.id,
         uid: elements.uidInput.value.trim(),
-        badgeName: elements.badgeNameInput.value.trim()
+        badgeName: elements.badgeNameInput.value.trim(),
+        badgeImage: appState.selectedImage
     };
     
     try {
@@ -725,7 +829,7 @@ function updateConnectionStatus(isConnected, statusText = null) {
     elements.connectionStatus.className = isConnected ? 'connected' : 'disconnected';
     
     elements.statusIndicator.className = `status-indicator ${isConnected ? 'connected' : 'disconnected'}`;
-    elements.statusText.textContent = statusText || (isConnected ? 'Printer ready' : 'No printer connected');
+    elements.statusText.textContent = statusText || (isConnected ? 'Printer ready' : 'Checking printer connection...');
     
     // Update retry count for connection status
     if (isConnected) {
@@ -746,11 +850,18 @@ async function checkInitialPrinterStatus() {
                 const status = data.status;
                 updateConnectionStatus(status.isConnected, 
                     status.isConnected ? `Connected to ${status.printerName || status.printerId}` : 'No printer connected');
+            } else {
+                // No printer configured yet
+                updateConnectionStatus(false, 'No printer configured');
             }
+        } else {
+            // API call failed, show checking status
+            updateConnectionStatus(false, 'Checking printer connection...');
         }
     } catch (error) {
         console.log('Could not check initial printer status:', error.message);
-        // Don't show error - this is expected if no printer is set up yet
+        // Show checking status when there's an error
+        updateConnectionStatus(false, 'Checking printer connection...');
     }
 }
 
@@ -779,9 +890,10 @@ async function loadQueueStatus() {
 // Update queue display with real-time data
 function updateQueueDisplay(queueStatus) {
     // Update queue statistics
-    elements.queueCount.textContent = queueStatus.stats.queued || 0;
-    elements.processingCount.textContent = queueStatus.stats.processing || 0;
-    elements.completedCount.textContent = queueStatus.stats.completed || 0;
+    const stats = queueStatus.stats || {};
+    elements.queueCount.textContent = stats.queued || 0;
+    elements.processingCount.textContent = stats.processing || 0;
+    elements.completedCount.textContent = stats.completed || 0;
     
     // Combine all jobs for display
     const allJobs = [
@@ -1514,28 +1626,54 @@ if (typeof module !== 'undefined' && module.exports) {
         CONFIG
     };
 }
-// Print
-er Setup Modal Functions
+// Printer Setup Modal Functions
 function showPrinterSetupModal() {
     const modal = document.getElementById('printer-setup-modal');
     const overlay = document.getElementById('printer-setup-overlay');
     const closeButton = document.getElementById('printer-setup-close');
     
-    // Show modal
+    if (!modal) {
+        return;
+    }
+    // Show modal with proper styling
     modal.classList.add('active');
     modal.setAttribute('aria-hidden', 'false');
+    modal.style.display = 'flex';
+    modal.style.position = 'fixed';
+    modal.style.top = '0';
+    modal.style.left = '0';
+    modal.style.width = '100%';
+    modal.style.height = '100%';
+    modal.style.zIndex = '10000';
     
     // Initialize modal content
     initializePrinterSetupModal();
+    loadCurrentTextPositions();
     
     // Event handlers
     const closeModal = () => {
         modal.classList.remove('active');
         modal.setAttribute('aria-hidden', 'true');
+        modal.style.display = 'none';
+        modal.style.position = '';
+        modal.style.top = '';
+        modal.style.left = '';
+        modal.style.width = '';
+        modal.style.height = '';
+        modal.style.zIndex = '';
     };
     
-    overlay.addEventListener('click', closeModal);
-    closeButton.addEventListener('click', closeModal);
+    if (overlay) {
+        overlay.addEventListener('click', closeModal);
+    } else {
+        console.error('Modal overlay not found');
+    }
+    
+    if (closeButton) {
+        closeButton.addEventListener('click', closeModal);
+    } else {
+        console.error('Modal close button not found');
+    }
     
     // Handle escape key
     const handleEscape = (e) => {
@@ -1576,17 +1714,45 @@ function initializePrinterSetupModal() {
     const discoverButton = document.getElementById('discover-printers');
     const refreshButton = document.getElementById('refresh-printers');
     
-    discoverButton.addEventListener('click', discoverPrinters);
-    refreshButton.addEventListener('click', discoverPrinters);
+    if (discoverButton) {
+        discoverButton.addEventListener('click', discoverPrinters);
+    }
+    
+    if (refreshButton) {
+        refreshButton.addEventListener('click', discoverPrinters);
+    }
     
     // Initialize status tab handlers
     const testButton = document.getElementById('test-connectivity');
     const refreshStatusButton = document.getElementById('refresh-status');
     const disconnectButton = document.getElementById('disconnect-printer');
     
-    testButton.addEventListener('click', testPrinterConnectivity);
-    refreshStatusButton.addEventListener('click', loadPrinterStatus);
-    disconnectButton.addEventListener('click', disconnectPrinter);
+    if (testButton) {
+        testButton.addEventListener('click', testPrinterConnectivity);
+    }
+    
+    if (refreshStatusButton) {
+        refreshStatusButton.addEventListener('click', loadPrinterStatus);
+    }
+    
+    if (disconnectButton) {
+        disconnectButton.addEventListener('click', disconnectPrinter);
+    }
+    
+    // Initialize text positioning handlers
+    const updatePositionsButton = document.getElementById('update-positions');
+    const resetPositionsButton = document.getElementById('reset-positions');
+    
+    if (updatePositionsButton) {
+        updatePositionsButton.addEventListener('click', updateTextPositions);
+    }
+    
+    if (resetPositionsButton) {
+        resetPositionsButton.addEventListener('click', resetTextPositions);
+    }
+    
+    // Initialize visual editor
+    initializeVisualEditor();
 }
 
 function loadTabContent(tabName) {
@@ -1599,6 +1765,9 @@ function loadTabContent(tabName) {
             break;
         case 'presets':
             loadPrinterPresets();
+            break;
+        case 'text-positioning':
+            initializeVisualEditor();
             break;
         case 'troubleshooting':
             // Static content, no loading needed
@@ -1974,4 +2143,377 @@ function selectPreset(presetName) {
     // You could also store the selected preset in application state
     // and use it for future print jobs
     console.log('Selected preset:', presetName);
+}
+
+// Update text positions in database
+async function updateTextPositions() {
+    console.log('updateTextPositions called');
+    try {
+        const badgeNameXEl = document.getElementById('badge-name-x');
+        const badgeNameYEl = document.getElementById('badge-name-y');
+        const badgeNameSizeEl = document.getElementById('badge-name-size');
+        const uidXEl = document.getElementById('uid-x');
+        const uidYEl = document.getElementById('uid-y');
+        const uidSizeEl = document.getElementById('uid-size');
+        
+        if (!badgeNameXEl || !badgeNameYEl || !badgeNameSizeEl || !uidXEl || !uidYEl || !uidSizeEl) {
+            console.error('Missing input elements');
+            showToastNotification('Missing input fields', 'failed');
+            return;
+        }
+        
+        const badgeNameX = badgeNameXEl.value;
+        const badgeNameY = badgeNameYEl.value;
+        const badgeNameSize = badgeNameSizeEl.value;
+        const uidX = uidXEl.value;
+        const uidY = uidYEl.value;
+        const uidSize = uidSizeEl.value;
+        
+        console.log('Updating positions:', { badgeNameX, badgeNameY, badgeNameSize, uidX, uidY, uidSize });
+        
+        const textFields = [
+            {
+                name: 'badgeName',
+                x: parseInt(badgeNameX),
+                y: parseInt(badgeNameY),
+                fontSize: parseInt(badgeNameSize),
+                fontFamily: 'Arial Bold'
+            },
+            {
+                name: 'uid',
+                x: parseInt(uidX),
+                y: parseInt(uidY),
+                fontSize: parseInt(uidSize),
+                fontFamily: 'Arial'
+            }
+        ];
+        
+        console.log('Sending textFields:', textFields);
+        
+        const response = await fetch('/api/templates/badges-template/text-fields', {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ textFields })
+        });
+        
+        console.log('Response status:', response.status);
+        
+        if (response.ok) {
+            const result = await response.json();
+            console.log('Update result:', result);
+            showToastNotification('Text positions updated successfully', 'completed');
+            // Force refresh template previews by adding timestamp to bypass cache
+            const timestamp = Date.now();
+            const templateImages = document.querySelectorAll('.template-image');
+            templateImages.forEach(image => {
+                const templateId = image.closest('.template-item').querySelector('.template-radio').value;
+                const imageParam = appState.selectedImage ? `?badgeImage=${appState.selectedImage}&t=${timestamp}` : `?t=${timestamp}`;
+                image.src = `/api/templates/${templateId}/preview${imageParam}`;
+            });
+            
+            // Also refresh live preview if it exists
+            const livePreview = document.getElementById('live-preview-image');
+            if (livePreview && livePreview.src) {
+                generateLiveBadgePreview();
+            }
+        } else {
+            const errorData = await response.json();
+            console.error('Update failed:', errorData);
+            throw new Error(errorData.message || 'Failed to update positions');
+        }
+        
+    } catch (error) {
+        console.error('Error updating positions:', error);
+        showToastNotification(`Failed to update positions: ${error.message}`, 'failed');
+    }
+}
+
+// Load current text positions from database
+async function loadCurrentTextPositions() {
+    try {
+        const response = await fetch('/api/templates/badges-template');
+        if (response.ok) {
+            const data = await response.json();
+            const template = data.template;
+            
+            let textFields = [];
+            try {
+                textFields = typeof template.textFields === 'string' 
+                    ? JSON.parse(template.textFields) 
+                    : template.textFields || [];
+            } catch (e) {
+                textFields = [];
+            }
+            
+            const badgeNameField = textFields.find(field => field.name === 'badgeName');
+            const uidField = textFields.find(field => field.name === 'uid');
+            
+            if (badgeNameField) {
+                document.getElementById('badge-name-x').value = badgeNameField.x || 100;
+                document.getElementById('badge-name-y').value = badgeNameField.y || 300;
+                document.getElementById('badge-name-size').value = badgeNameField.fontSize || 56;
+            }
+            
+            if (uidField) {
+                document.getElementById('uid-x').value = uidField.x || 100;
+                document.getElementById('uid-y').value = uidField.y || 700;
+                document.getElementById('uid-size').value = uidField.fontSize || 24;
+            }
+            
+            // Update visual editor
+            if (visualEditor.canvas) {
+                loadEditorPositions();
+                drawEditor();
+            }
+        }
+    } catch (error) {
+        console.error('Failed to load text positions:', error);
+    }
+}
+
+// Visual editor state
+let visualEditor = {
+    canvas: null,
+    ctx: null,
+    selectedElement: null,
+    isDragging: false,
+    dragOffset: { x: 0, y: 0 },
+    elements: {
+        badgeName: { x: 50, y: 150, width: 200, height: 40, fontSize: 28, visible: true },
+        uid: { x: 50, y: 350, width: 150, height: 20, fontSize: 14, visible: true }
+    }
+};
+
+// Initialize visual editor
+function initializeVisualEditor() {
+    setTimeout(() => {
+        const canvas = document.getElementById('position-editor');
+        if (!canvas) {
+            console.log('Canvas not found');
+            return;
+        }
+        
+        visualEditor.canvas = canvas;
+        visualEditor.ctx = canvas.getContext('2d');
+        
+        // Set default positions
+        visualEditor.elements = {
+            badgeName: { x: 50, y: 150, width: 200, height: 40, fontSize: 28, visible: true },
+            uid: { x: 50, y: 350, width: 150, height: 20, fontSize: 14, visible: true }
+        };
+        
+        // Event listeners
+        canvas.addEventListener('mousedown', handleEditorMouseDown);
+        canvas.addEventListener('mousemove', handleEditorMouseMove);
+        canvas.addEventListener('mouseup', handleEditorMouseUp);
+        
+        // Load badge image if selected
+        loadBadgeImageForEditor();
+        
+        // Load current positions from database
+        loadEditorPositions();
+        
+        console.log('Visual editor initialized');
+    }, 200);
+}
+
+// Load current positions into editor from database
+async function loadEditorPositions() {
+    try {
+        const response = await fetch('/api/templates/badges-template');
+        if (response.ok) {
+            const data = await response.json();
+            const template = data.template;
+            
+            let textFields = [];
+            try {
+                textFields = typeof template.textFields === 'string' 
+                    ? JSON.parse(template.textFields) 
+                    : template.textFields || [];
+            } catch (e) {
+                textFields = [];
+            }
+            
+            const badgeNameField = textFields.find(field => field.name === 'badgeName');
+            const uidField = textFields.find(field => field.name === 'uid');
+            
+            const scale = 613 / 1226;
+            
+            // Use database values or defaults
+            const badgeNameX = badgeNameField?.x || 100;
+            const badgeNameY = badgeNameField?.y || 300;
+            const badgeNameSize = badgeNameField?.fontSize || 56;
+            
+            const uidX = uidField?.x || 100;
+            const uidY = uidField?.y || 700;
+            const uidSize = uidField?.fontSize || 24;
+            
+            visualEditor.elements.badgeName = {
+                x: badgeNameX * scale,
+                y: badgeNameY * scale,
+                width: 200,
+                height: badgeNameSize * scale,
+                fontSize: badgeNameSize * scale,
+                visible: true
+            };
+            
+            visualEditor.elements.uid = {
+                x: uidX * scale,
+                y: uidY * scale,
+                width: 150,
+                height: uidSize * scale,
+                fontSize: uidSize * scale,
+                visible: true
+            };
+            
+            console.log('Loaded positions from database:', { badgeNameX, badgeNameY, uidX, uidY });
+            drawEditor();
+        }
+    } catch (error) {
+        console.error('Failed to load editor positions:', error);
+    }
+}
+
+// Draw the editor canvas
+function drawEditor() {
+    if (!visualEditor.ctx || !visualEditor.canvas) return;
+    
+    const ctx = visualEditor.ctx;
+    const canvas = visualEditor.canvas;
+    
+    // Clear canvas
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    // Draw badge background if available
+    if (visualEditor.badgeImage) {
+        ctx.drawImage(visualEditor.badgeImage, 0, 0, canvas.width, canvas.height);
+    } else {
+        // Draw default background
+        ctx.fillStyle = '#f8f9fa';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.strokeStyle = '#dee2e6';
+        ctx.strokeRect(0, 0, canvas.width, canvas.height);
+    }
+    
+    // Draw badge name element
+    const badgeName = visualEditor.elements.badgeName;
+    ctx.fillStyle = 'rgba(52, 152, 219, 0.2)';
+    ctx.fillRect(badgeName.x, badgeName.y, badgeName.width, badgeName.height);
+    ctx.strokeStyle = '#3498db';
+    ctx.strokeRect(badgeName.x, badgeName.y, badgeName.width, badgeName.height);
+    
+    ctx.fillStyle = '#2c3e50';
+    ctx.font = '16px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText('Badge Name', badgeName.x + badgeName.width/2, badgeName.y + badgeName.height/2 + 5);
+    
+    // Draw UID element
+    const uid = visualEditor.elements.uid;
+    ctx.fillStyle = 'rgba(231, 76, 60, 0.2)';
+    ctx.fillRect(uid.x, uid.y, uid.width, uid.height);
+    ctx.strokeStyle = '#e74c3c';
+    ctx.strokeRect(uid.x, uid.y, uid.width, uid.height);
+    
+    ctx.fillStyle = '#2c3e50';
+    ctx.font = '12px Arial';
+    ctx.fillText('UID123', uid.x + uid.width/2, uid.y + uid.height/2 + 3);
+}
+
+// Handle mouse events
+function handleEditorMouseDown(e) {
+    const rect = visualEditor.canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    
+    // Check which element was clicked
+    Object.entries(visualEditor.elements).forEach(([key, element]) => {
+        if (!element.visible) return;
+        
+        if (x >= element.x && x <= element.x + element.width &&
+            y >= element.y && y <= element.y + element.height) {
+            visualEditor.selectedElement = key;
+            visualEditor.isDragging = true;
+            visualEditor.dragOffset = {
+                x: x - element.x,
+                y: y - element.y
+            };
+        }
+    });
+    
+    drawEditor();
+}
+
+function handleEditorMouseMove(e) {
+    if (!visualEditor.isDragging || !visualEditor.selectedElement) return;
+    
+    const rect = visualEditor.canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    
+    const element = visualEditor.elements[visualEditor.selectedElement];
+    element.x = Math.max(0, Math.min(x - visualEditor.dragOffset.x, visualEditor.canvas.width - element.width));
+    element.y = Math.max(0, Math.min(y - visualEditor.dragOffset.y, visualEditor.canvas.height - element.height));
+    
+    drawEditor();
+}
+
+function handleEditorMouseUp(e) {
+    if (visualEditor.isDragging) {
+        updateInputsFromEditor();
+    }
+    visualEditor.isDragging = false;
+}
+
+
+
+// Update input fields from editor positions
+function updateInputsFromEditor() {
+    const scale = 1226 / 613; // Convert back to full size
+    
+    const badgeName = visualEditor.elements.badgeName;
+    const uid = visualEditor.elements.uid;
+    
+    const badgeNameXInput = document.getElementById('badge-name-x');
+    const badgeNameYInput = document.getElementById('badge-name-y');
+    const uidXInput = document.getElementById('uid-x');
+    const uidYInput = document.getElementById('uid-y');
+    
+    if (badgeNameXInput) badgeNameXInput.value = Math.round(badgeName.x * scale);
+    if (badgeNameYInput) badgeNameYInput.value = Math.round(badgeName.y * scale);
+    if (uidXInput) uidXInput.value = Math.round(uid.x * scale);
+    if (uidYInput) uidYInput.value = Math.round(uid.y * scale);
+    
+    console.log('Updated inputs:', {
+        badgeNameX: Math.round(badgeName.x * scale),
+        badgeNameY: Math.round(badgeName.y * scale),
+        uidX: Math.round(uid.x * scale),
+        uidY: Math.round(uid.y * scale)
+    });
+}
+
+// Load badge image for visual editor
+function loadBadgeImageForEditor() {
+    if (!appState.selectedImage) return;
+    
+    const img = new Image();
+    img.onload = function() {
+        visualEditor.badgeImage = img;
+        drawEditor();
+    };
+    img.src = `/images/badges/${appState.selectedImage}`;
+}
+
+// Reset text positions to default
+function resetTextPositions() {
+    document.getElementById('badge-name-x').value = 100;
+    document.getElementById('badge-name-y').value = 300;
+    document.getElementById('badge-name-size').value = 56;
+    document.getElementById('uid-x').value = 100;
+    document.getElementById('uid-y').value = 700;
+    document.getElementById('uid-size').value = 24;
+    
+    loadEditorPositions();
+    drawEditor();
 }

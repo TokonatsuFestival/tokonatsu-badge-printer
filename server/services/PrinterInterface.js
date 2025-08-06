@@ -233,8 +233,9 @@ class PrinterInterface {
     if (!this.selectedPrinter) {
       return {
         isConnected: false,
-        status: 'No printer selected',
-        printerId: null
+        status: 'No printer connected',
+        printerId: null,
+        printerName: null
       };
     }
 
@@ -287,12 +288,23 @@ class PrinterInterface {
     }
 
     try {
-      const options = {
-        printer: this.selectedPrinter.name,
-        ...preset.options
-      };
-
-      await pdfToPrinter.print(documentPath, options);
+      if (process.platform === 'darwin') {
+        // macOS - use lp command
+        const command = `lp -d "${this.selectedPrinter.name}" "${documentPath}"`;
+        await execAsync(command);
+      } else if (process.platform === 'win32') {
+        // Windows - use pdf-to-printer
+        const options = {
+          printer: this.selectedPrinter.name,
+          ...preset.options
+        };
+        await pdfToPrinter.print(documentPath, options);
+      } else {
+        // Linux - use lp command
+        const command = `lp -d "${this.selectedPrinter.name}" "${documentPath}"`;
+        await execAsync(command);
+      }
+      
       return true;
     } catch (error) {
       console.error('Error printing document:', error);
