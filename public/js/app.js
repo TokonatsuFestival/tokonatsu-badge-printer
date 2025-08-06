@@ -8,7 +8,15 @@ const appState = {
     templates: [],
     selectedTemplate: null,
     usedUIDs: new Set(),
-    isSubmitting: false
+    isSubmitting: false,
+    queueStatus: {
+        stats: { queued: 0, processing: 0, completed: 0, failed: 0, total: 0 },
+        queuedJobs: [],
+        processingJobs: [],
+        currentJob: null,
+        isProcessing: false
+    },
+    connectionRetryCount: 0
 };
 
 // Configuration
@@ -32,11 +40,46 @@ let elements = {};
 socket.on('connect', () => {
     console.log('Connected to server');
     updateConnectionStatus(true);
+    // Request initial queue status when connected
+    loadQueueStatus();
 });
 
 socket.on('disconnect', () => {
     console.log('Disconnected from server');
     updateConnectionStatus(false);
+});
+
+socket.on('connect_error', (error) => {
+    console.error('Connection error:', error);
+    updateConnectionStatus(false);
+});
+
+// Real-time queue update handlers
+socket.on('queueUpdate', (queueStatus) => {
+    console.log('Queue update received:', queueStatus);
+    updateQueueDisplay(queueStatus);
+});
+
+socket.on('jobStatusChange', (jobData) => {
+    console.log('Job status change:', jobData);
+    updateJobStatus(jobData);
+    showJobNotification(jobData);
+});
+
+// Handle reconnection
+socket.on('reconnect', (attemptNumber) => {
+    console.log('Reconnected after', attemptNumber, 'attempts');
+    updateConnectionStatus(true);
+    loadQueueStatus();
+});
+
+socket.on('reconnect_error', (error) => {
+    console.error('Reconnection error:', error);
+});
+
+socket.on('reconnect_failed', () => {
+    console.error('Failed to reconnect');
+    showGlobalError('Connection lost. Please refresh the page.');
 });
 
 // DOM ready handler
@@ -46,6 +89,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initializeFormHandlers();
     loadTemplates();
     loadUsedUIDs();
+    loadQueueStatus();
 });
 
 // Initialize DOM element references
@@ -60,7 +104,12 @@ function initializeElements() {
         badgeNameError: document.getElementById('badge-name-error'),
         connectionStatus: document.getElementById('connection-status'),
         statusIndicator: document.getElementById('status-indicator'),
-        statusText: document.getElementById('status-text')
+        statusText: document.getElementById('status-text'),
+        queueCount: document.getElementById('queue-count'),
+        processingCount: document.getElementById('processing-count'),
+        completedCount: document.getElementById('completed-count'),
+        jobList: document.getElementById('job-list'),
+        refreshQueue: document.getElementById('refresh-queue')
     };
 }
 
@@ -102,6 +151,12 @@ function initializeFormHandlers() {
     
     // Template selection handler (delegated)
     elements.templateGrid.addEventListener('change', handleTemplateSelection);
+    
+    // Queue refresh button
+    elements.refreshQueue.addEventListener('click', loadQueueStatus);
+    
+    // Job list event delegation for cancel/retry buttons
+    elements.jobList.addEventListener('click', handleJobAction);
     
     // Update form validity on any input change
     elements.form.addEventListener('input', updateFormValidity);
@@ -512,6 +567,290 @@ function updateConnectionStatus(isConnected) {
     
     elements.statusIndicator.className = `status-indicator ${isConnected ? 'connected' : 'disconnected'}`;
     elements.statusText.textContent = isConnected ? 'Printer ready' : 'Connection lost';
+    
+    // Update retry count for connection status
+    if (isConnected) {
+        appState.connectionRetryCount = 0;
+    } else {
+        appState.connectionRetryCount++;
+    }
+}
+
+// Load current queue status
+async function loadQueueStatus() {
+    try {
+        const response = await fetch('/api/queue');
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const queueStatus = await response.json();
+        appState.queueStatus = queueStatus;
+        updateQueueDisplay(queueStatus);
+        
+    } catch (error) {
+        console.error('Failed to load queue status:', error);
+        // Don't show error if we're disconnected - the connection status will handle it
+        if (socket.connected) {
+            showGlobalError('Failed to load queue status. Please try refreshing.');
+        }
+    }
+}
+
+// Update queue display with real-time data
+function updateQueueDisplay(queueStatus) {
+    // Update queue statistics
+    elements.queueCount.textContent = queueStatus.stats.queued || 0;
+    elements.processingCount.textContent = queueStatus.stats.processing || 0;
+    elements.completedCount.textContent = queueStatus.stats.completed || 0;
+    
+    // Combine all jobs for display
+    const allJobs = [
+        ...(queueStatus.queuedJobs || []),
+        ...(queueStatus.processingJobs || [])
+    ];
+    
+    // Add current job if it exists and isn't already in the list
+    if (queueStatus.currentJob && !allJobs.find(job => job.id === queueStatus.currentJob.id)) {
+        allJobs.unshift(queueStatus.currentJob);
+    }
+    
+    // Sort jobs by creation time (newest first)
+    allJobs.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    
+    renderJobList(allJobs);
+    
+    // Update used UIDs from current jobs
+    const currentUIDs = allJobs
+        .filter(job => job.status !== 'failed' && job.status !== 'completed')
+        .map(job => job.uid);
+    appState.usedUIDs = new Set(currentUIDs);
+}
+
+// Render the job list
+function renderJobList(jobs) {
+    const jobTemplate = document.getElementById('job-item-template');
+    
+    if (jobs.length === 0) {
+        elements.jobList.innerHTML = '<div class="empty-queue"><p>No jobs in queue</p></div>';
+        return;
+    }
+    
+    elements.jobList.innerHTML = '';
+    
+    jobs.forEach(job => {
+        const jobElement = jobTemplate.content.cloneNode(true);
+        const jobItem = jobElement.querySelector('.job-item');
+        
+        // Set job data
+        jobItem.setAttribute('data-job-id', job.id);
+        jobElement.querySelector('.job-uid').textContent = job.uid;
+        jobElement.querySelector('.job-name').textContent = job.badgeName;
+        jobElement.querySelector('.job-template').textContent = getTemplateName(job.templateId);
+        jobElement.querySelector('.job-timestamp').textContent = formatTimestamp(job.createdAt);
+        
+        // Set status with appropriate styling
+        const statusElement = jobElement.querySelector('.job-status');
+        statusElement.textContent = formatJobStatus(job.status);
+        statusElement.className = `job-status status-${job.status}`;
+        
+        // Configure action buttons
+        const cancelButton = jobElement.querySelector('.job-cancel');
+        const retryButton = jobElement.querySelector('.job-retry');
+        
+        if (job.status === 'failed') {
+            cancelButton.style.display = 'none';
+            retryButton.style.display = 'inline-block';
+            retryButton.disabled = job.retryCount >= 3; // Max retries
+        } else if (job.status === 'completed') {
+            cancelButton.style.display = 'none';
+            retryButton.style.display = 'none';
+        } else {
+            cancelButton.style.display = 'inline-block';
+            retryButton.style.display = 'none';
+        }
+        
+        // Add error message if failed
+        if (job.status === 'failed' && job.errorMessage) {
+            const errorDiv = document.createElement('div');
+            errorDiv.className = 'job-error';
+            errorDiv.textContent = job.errorMessage;
+            jobElement.querySelector('.job-info').appendChild(errorDiv);
+        }
+        
+        elements.jobList.appendChild(jobElement);
+    });
+}
+
+// Handle job action buttons (cancel/retry)
+async function handleJobAction(event) {
+    if (!event.target.matches('.job-cancel, .job-retry')) {
+        return;
+    }
+    
+    const jobItem = event.target.closest('.job-item');
+    const jobId = jobItem.getAttribute('data-job-id');
+    const isCancel = event.target.classList.contains('job-cancel');
+    const isRetry = event.target.classList.contains('job-retry');
+    
+    try {
+        event.target.disabled = true;
+        
+        if (isCancel) {
+            if (!confirm('Are you sure you want to cancel this job?')) {
+                event.target.disabled = false;
+                return;
+            }
+            
+            const response = await fetch(`/api/jobs/${jobId}`, {
+                method: 'DELETE'
+            });
+            
+            if (!response.ok) {
+                throw new Error(`Failed to cancel job: ${response.status}`);
+            }
+            
+            showSuccessMessage('Job cancelled successfully');
+            
+        } else if (isRetry) {
+            const response = await fetch(`/api/jobs/${jobId}/retry`, {
+                method: 'POST'
+            });
+            
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.message || `Failed to retry job: ${response.status}`);
+            }
+            
+            showSuccessMessage('Job queued for retry');
+        }
+        
+    } catch (error) {
+        console.error('Job action error:', error);
+        showGlobalError(error.message);
+        event.target.disabled = false;
+    }
+}
+
+// Update individual job status (for granular updates)
+function updateJobStatus(jobData) {
+    const jobItem = document.querySelector(`[data-job-id="${jobData.id}"]`);
+    if (!jobItem) {
+        // Job not currently displayed, refresh the whole queue
+        loadQueueStatus();
+        return;
+    }
+    
+    // Update status display
+    const statusElement = jobItem.querySelector('.job-status');
+    statusElement.textContent = formatJobStatus(jobData.status);
+    statusElement.className = `job-status status-${jobData.status}`;
+    
+    // Update action buttons
+    const cancelButton = jobItem.querySelector('.job-cancel');
+    const retryButton = jobItem.querySelector('.job-retry');
+    
+    if (jobData.status === 'failed') {
+        cancelButton.style.display = 'none';
+        retryButton.style.display = 'inline-block';
+        retryButton.disabled = jobData.retryCount >= 3;
+        
+        // Add error message if not already present
+        if (jobData.errorMessage && !jobItem.querySelector('.job-error')) {
+            const errorDiv = document.createElement('div');
+            errorDiv.className = 'job-error';
+            errorDiv.textContent = jobData.errorMessage;
+            jobItem.querySelector('.job-info').appendChild(errorDiv);
+        }
+    } else if (jobData.status === 'completed') {
+        cancelButton.style.display = 'none';
+        retryButton.style.display = 'none';
+        
+        // Remove error message if present
+        const errorDiv = jobItem.querySelector('.job-error');
+        if (errorDiv) {
+            errorDiv.remove();
+        }
+    }
+}
+
+// Show job status change notifications
+function showJobNotification(jobData) {
+    const notifications = {
+        'processing': `Processing badge for ${jobData.badgeName}`,
+        'completed': `Badge completed for ${jobData.badgeName}`,
+        'failed': `Badge failed for ${jobData.badgeName}: ${jobData.errorMessage || 'Unknown error'}`
+    };
+    
+    const message = notifications[jobData.status];
+    if (message) {
+        showToastNotification(message, jobData.status);
+    }
+}
+
+// Show toast notification
+function showToastNotification(message, type = 'info') {
+    // Create toast element
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type}`;
+    toast.textContent = message;
+    toast.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        background: ${type === 'completed' ? '#2ecc71' : type === 'failed' ? '#e74c3c' : '#3498db'};
+        color: white;
+        padding: 12px 20px;
+        border-radius: 4px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        z-index: 1000;
+        max-width: 300px;
+        word-wrap: break-word;
+        opacity: 0;
+        transform: translateX(100%);
+        transition: all 0.3s ease;
+    `;
+    
+    document.body.appendChild(toast);
+    
+    // Animate in
+    setTimeout(() => {
+        toast.style.opacity = '1';
+        toast.style.transform = 'translateX(0)';
+    }, 100);
+    
+    // Auto remove after 5 seconds
+    setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateX(100%)';
+        setTimeout(() => {
+            if (toast.parentNode) {
+                toast.parentNode.removeChild(toast);
+            }
+        }, 300);
+    }, 5000);
+}
+
+// Helper functions
+function getTemplateName(templateId) {
+    const template = appState.templates.find(t => t.id === templateId);
+    return template ? template.name : 'Unknown Template';
+}
+
+function formatJobStatus(status) {
+    const statusMap = {
+        'queued': 'Queued',
+        'processing': 'Processing',
+        'completed': 'Completed',
+        'failed': 'Failed'
+    };
+    return statusMap[status] || status;
+}
+
+function formatTimestamp(timestamp) {
+    const date = new Date(timestamp);
+    return date.toLocaleTimeString();
 }
 
 // Export functions for testing

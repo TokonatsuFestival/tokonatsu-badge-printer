@@ -137,8 +137,9 @@ class PrintQueueManager extends EventEmitter {
       // Reset job to queued status
       const updatedJob = await this.badgeJobModel.updateStatus(jobId, 'queued');
       
-      // Broadcast queue update
+      // Broadcast queue update and job status change
       this.broadcastQueueUpdate();
+      this.broadcastJobStatusChange(updatedJob);
       
       // Emit job retried event
       this.emit('jobRetried', updatedJob);
@@ -191,16 +192,17 @@ class PrintQueueManager extends EventEmitter {
       this.currentJob = nextJob;
       
       // Update job status to processing
-      await this.badgeJobModel.updateStatus(nextJob.id, 'processing');
+      const processingJob = await this.badgeJobModel.updateStatus(nextJob.id, 'processing');
       
       // Set processing timeout
-      this.setProcessingTimer(nextJob);
+      this.setProcessingTimer(processingJob);
       
-      // Broadcast queue update
+      // Broadcast queue update and job status change
       this.broadcastQueueUpdate();
+      this.broadcastJobStatusChange(processingJob);
       
       // Emit job processing event
-      this.emit('jobProcessing', nextJob);
+      this.emit('jobProcessing', processingJob);
       
       // Process the job
       await this.executeJob(nextJob);
@@ -229,17 +231,18 @@ class PrintQueueManager extends EventEmitter {
       await this.printerInterface.printDocument(badgeDocument);
       
       // Mark job as completed
-      await this.badgeJobModel.updateStatus(job.id, 'completed');
+      const completedJob = await this.badgeJobModel.updateStatus(job.id, 'completed');
       
       // Clear current job
       this.clearProcessingTimer();
       this.currentJob = null;
       
-      // Broadcast queue update
+      // Broadcast queue update and job status change
       this.broadcastQueueUpdate();
+      this.broadcastJobStatusChange(completedJob);
       
       // Emit job completed event
-      this.emit('jobCompleted', job);
+      this.emit('jobCompleted', completedJob);
       
       // Process next job
       setTimeout(() => this.processNextJob(), 100);
@@ -277,8 +280,9 @@ class PrintQueueManager extends EventEmitter {
         
       } else {
         // Mark job as permanently failed
-        await this.badgeJobModel.updateStatus(job.id, 'failed', error.message);
-        this.emit('jobFailed', updatedJob, error);
+        const failedJob = await this.badgeJobModel.updateStatus(job.id, 'failed', error.message);
+        this.broadcastJobStatusChange(failedJob);
+        this.emit('jobFailed', failedJob, error);
       }
       
       // Clear current job
@@ -341,6 +345,27 @@ class PrintQueueManager extends EventEmitter {
     try {
       const queueStatus = await this.getQueueStatus();
       this.io.emit('queueUpdate', queueStatus);
+    } catch (error) {
+      this.emit('error', error);
+    }
+  }
+
+  /**
+   * Broadcast individual job status change via Socket.io
+   */
+  broadcastJobStatusChange(job) {
+    try {
+      this.io.emit('jobStatusChange', {
+        id: job.id,
+        templateId: job.templateId,
+        uid: job.uid,
+        badgeName: job.badgeName,
+        status: job.status,
+        retryCount: job.retryCount,
+        errorMessage: job.errorMessage,
+        createdAt: job.createdAt,
+        processedAt: job.processedAt
+      });
     } catch (error) {
       this.emit('error', error);
     }

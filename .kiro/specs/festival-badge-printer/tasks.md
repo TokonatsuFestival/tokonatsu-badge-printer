@@ -84,7 +84,7 @@
   - Write client-side unit tests for form validation logic
   - _Requirements: 3.2, 3.3, 2.1, 1.3_
 
-- [ ] 10. Add real-time queue updates with WebSocket
+- [x] 10. Add real-time queue updates with WebSocket
 
   - Implement Socket.io client connection and event handling
   - Create real-time queue status updates in the interface

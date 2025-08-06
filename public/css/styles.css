@@ -502,6 +502,16 @@ section h2 {
     color: #95a5a6;
 }
 
+.job-error {
+    font-size: 0.8rem;
+    color: #e74c3c;
+    background: #fdf2f2;
+    padding: 4px 8px;
+    border-radius: 4px;
+    margin-top: 4px;
+    border-left: 3px solid #e74c3c;
+}
+
 .job-actions {
     display: flex;
     gap: 8px;
@@ -613,6 +623,83 @@ footer {
         gap: 10px;
         align-items: stretch;
     }
+}
+
+/* Toast Notifications */
+.toast {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    padding: 12px 20px;
+    border-radius: 4px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    z-index: 1000;
+    max-width: 300px;
+    word-wrap: break-word;
+    font-size: 0.9rem;
+    font-weight: 500;
+}
+
+.toast-info {
+    background: #3498db;
+    color: white;
+}
+
+.toast-completed {
+    background: #2ecc71;
+    color: white;
+}
+
+.toast-failed {
+    background: #e74c3c;
+    color: white;
+}
+
+.toast-processing {
+    background: #f39c12;
+    color: white;
+}
+
+/* Global Messages */
+.global-error {
+    background: #fee;
+    border: 1px solid #fcc;
+    color: #c33;
+    padding: 12px;
+    border-radius: 4px;
+    margin-bottom: 20px;
+    font-size: 0.9rem;
+}
+
+.global-success {
+    background: #efe;
+    border: 1px solid #cfc;
+    color: #363;
+    padding: 12px;
+    border-radius: 4px;
+    margin-bottom: 20px;
+    font-size: 0.9rem;
+}
+
+/* Status indicators for job statuses */
+.status-queued {
+    background: #f39c12 !important;
+    color: white !important;
+}
+
+.status-processing {
+    background: #3498db !important;
+    color: white !important;
+}
+
+.status-completed {
+    background: #27ae60 !important;
+    color: white !important;
+}
+
+.status-failed {
+    background: #e74c3c !important;
+    color: white !important;
 }
 
 /* High contrast mode support */
