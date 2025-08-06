@@ -106,8 +106,54 @@ class TemplateProcessor {
       
       console.log('Using text fields from database:', textFields);
       
-      const uidConfig = uidField || { x: 100, y: 700, fontSize: 24, fontFamily: 'Arial' };
-      const badgeNameConfig = badgeNameField || { x: 100, y: 300, fontSize: 56, fontFamily: 'Arial Bold' };
+      // Handle both old format (x,y,fontSize) and new format (x1,y1,x2,y2)
+      let uidConfig, badgeNameConfig;
+      
+      if (uidField && uidField.x1 !== undefined) {
+        // New bounding box format
+        uidConfig = {
+          x1: uidField.x1,
+          y1: uidField.y1,
+          x2: uidField.x2,
+          y2: uidField.y2,
+          fontFamily: uidField.fontFamily || 'Arial'
+        };
+      } else if (uidField) {
+        // Old format - convert to bounding box
+        uidConfig = {
+          x1: uidField.x,
+          y1: uidField.y,
+          x2: uidField.x + 200,
+          y2: uidField.y + 70,
+          fontFamily: uidField.fontFamily || 'Arial'
+        };
+      } else {
+        // Default
+        uidConfig = { x1: 100, y1: 650, x2: 300, y2: 720, fontFamily: 'Hiragino Kaku Gothic Pro' };
+      }
+      
+      if (badgeNameField && badgeNameField.x1 !== undefined) {
+        // New bounding box format
+        badgeNameConfig = {
+          x1: badgeNameField.x1,
+          y1: badgeNameField.y1,
+          x2: badgeNameField.x2,
+          y2: badgeNameField.y2,
+          fontFamily: badgeNameField.fontFamily || 'Arial Bold'
+        };
+      } else if (badgeNameField) {
+        // Old format - convert to bounding box
+        badgeNameConfig = {
+          x1: badgeNameField.x,
+          y1: badgeNameField.y,
+          x2: badgeNameField.x + 400,
+          y2: badgeNameField.y + 100,
+          fontFamily: badgeNameField.fontFamily || 'Arial Bold'
+        };
+      } else {
+        // Default
+        badgeNameConfig = { x1: 100, y1: 250, x2: 500, y2: 350, fontFamily: 'Hiragino Kaku Gothic Pro' };
+      }
       
       console.log('Final text configs:', { uidConfig, badgeNameConfig });
 
@@ -230,23 +276,39 @@ class TemplateProcessor {
    * Render text on canvas with specified configuration
    * @param {CanvasRenderingContext2D} ctx - Canvas context
    * @param {string} text - Text to render
-   * @param {Object} config - Text configuration (x, y, fontSize, fontFamily)
+   * @param {Object} config - Text configuration (x1, y1, x2, y2, fontFamily) or old format (x, y, fontSize, fontFamily)
    */
   renderText(ctx, text, config) {
     try {
+      let x, y, fontSize;
+      
+      if (config.x1 !== undefined) {
+        // New bounding box format - auto-scale text
+        const width = config.x2 - config.x1;
+        const height = config.y2 - config.y1;
+        fontSize = Math.min(height * 0.6, width / text.length * 1.2);
+        
+        x = config.x1 + width / 2;
+        y = config.y1 + height / 2;
+        
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+      } else {
+        // Old format
+        x = config.x;
+        y = config.y;
+        fontSize = config.fontSize;
+        
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'top';
+      }
+      
       // Set font
-      ctx.font = `${config.fontSize}px ${config.fontFamily}`;
+      ctx.font = `${fontSize}px ${config.fontFamily}`;
       ctx.fillStyle = '#000000'; // Default to black text
-      ctx.textAlign = 'left';
-      ctx.textBaseline = 'top';
 
-      // Ensure coordinates are within canvas bounds
-      const x = Math.max(0, Math.min(config.x, ctx.canvas.width - 10));
-      const y = Math.max(0, Math.min(config.y, ctx.canvas.height - config.fontSize));
-
-      // Render text with word wrapping if needed
-      const maxWidth = ctx.canvas.width - x - 10; // Leave 10px margin
-      this.wrapText(ctx, text, x, y, maxWidth, config.fontSize * 1.2);
+      // Render text
+      ctx.fillText(text, x, y);
     } catch (error) {
       throw new Error(`Failed to render text: ${error.message}`);
     }

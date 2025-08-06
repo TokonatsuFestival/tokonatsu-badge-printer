@@ -243,6 +243,22 @@ function renderImageGrid(images) {
         imageGrid.appendChild(imageItem);
     });
     
+    // Auto-select first image
+    if (images.length > 0) {
+        const firstImage = images[0];
+        const firstRadio = document.querySelector(`#image-0`);
+        if (firstRadio) {
+            firstRadio.checked = true;
+            appState.selectedImage = firstImage.filename;
+            
+            // Update visual feedback
+            const firstImageItem = firstRadio.closest('.image-item');
+            if (firstImageItem) {
+                firstImageItem.classList.add('selected');
+            }
+        }
+    }
+    
     // Add event listener for image selection
     imageGrid.addEventListener('change', handleImageSelection);
 }
@@ -372,6 +388,17 @@ function renderTemplates(templates) {
         elements.templateGrid.appendChild(templateElement);
     });
     
+    // Auto-select first template
+    if (templates.length > 0) {
+        const firstTemplate = templates[0];
+        const firstRadio = document.querySelector(`#template-${firstTemplate.id}`);
+        if (firstRadio) {
+            firstRadio.checked = true;
+            appState.selectedTemplate = firstTemplate;
+            updateTemplatePreview(firstTemplate);
+        }
+    }
+    
     updateFormValidity();
 }
 
@@ -466,9 +493,9 @@ async function generateLiveBadgePreview() {
             </div>
         `;
         
-        // Insert after the form section
-        const formSection = document.querySelector('.form-section:last-child');
-        formSection.parentNode.insertBefore(previewContainer, formSection.nextSibling);
+        // Insert after the badge form
+        const badgeForm = document.getElementById('badge-form');
+        badgeForm.parentNode.insertBefore(previewContainer, badgeForm.nextSibling);
     }
     
     const previewImage = document.getElementById('live-preview-image');
@@ -2149,42 +2176,49 @@ function selectPreset(presetName) {
 async function updateTextPositions() {
     console.log('updateTextPositions called');
     try {
-        const badgeNameXEl = document.getElementById('badge-name-x');
-        const badgeNameYEl = document.getElementById('badge-name-y');
-        const badgeNameSizeEl = document.getElementById('badge-name-size');
-        const uidXEl = document.getElementById('uid-x');
-        const uidYEl = document.getElementById('uid-y');
-        const uidSizeEl = document.getElementById('uid-size');
+        const badgeNameX1El = document.getElementById('badge-name-x1');
+        const badgeNameY1El = document.getElementById('badge-name-y1');
+        const badgeNameX2El = document.getElementById('badge-name-x2');
+        const badgeNameY2El = document.getElementById('badge-name-y2');
+        const uidX1El = document.getElementById('uid-x1');
+        const uidY1El = document.getElementById('uid-y1');
+        const uidX2El = document.getElementById('uid-x2');
+        const uidY2El = document.getElementById('uid-y2');
         
-        if (!badgeNameXEl || !badgeNameYEl || !badgeNameSizeEl || !uidXEl || !uidYEl || !uidSizeEl) {
+        if (!badgeNameX1El || !badgeNameY1El || !badgeNameX2El || !badgeNameY2El || 
+            !uidX1El || !uidY1El || !uidX2El || !uidY2El) {
             console.error('Missing input elements');
             showToastNotification('Missing input fields', 'failed');
             return;
         }
         
-        const badgeNameX = badgeNameXEl.value;
-        const badgeNameY = badgeNameYEl.value;
-        const badgeNameSize = badgeNameSizeEl.value;
-        const uidX = uidXEl.value;
-        const uidY = uidYEl.value;
-        const uidSize = uidSizeEl.value;
+        const badgeNameX1 = parseInt(badgeNameX1El.value);
+        const badgeNameY1 = parseInt(badgeNameY1El.value);
+        const badgeNameX2 = parseInt(badgeNameX2El.value);
+        const badgeNameY2 = parseInt(badgeNameY2El.value);
+        const uidX1 = parseInt(uidX1El.value);
+        const uidY1 = parseInt(uidY1El.value);
+        const uidX2 = parseInt(uidX2El.value);
+        const uidY2 = parseInt(uidY2El.value);
         
-        console.log('Updating positions:', { badgeNameX, badgeNameY, badgeNameSize, uidX, uidY, uidSize });
+        console.log('Updating bounding boxes:', { badgeNameX1, badgeNameY1, badgeNameX2, badgeNameY2, uidX1, uidY1, uidX2, uidY2 });
         
         const textFields = [
             {
                 name: 'badgeName',
-                x: parseInt(badgeNameX),
-                y: parseInt(badgeNameY),
-                fontSize: parseInt(badgeNameSize),
-                fontFamily: 'Arial Bold'
+                x1: badgeNameX1,
+                y1: badgeNameY1,
+                x2: badgeNameX2,
+                y2: badgeNameY2,
+                fontFamily: 'Hiragino Kaku Gothic Pro'
             },
             {
                 name: 'uid',
-                x: parseInt(uidX),
-                y: parseInt(uidY),
-                fontSize: parseInt(uidSize),
-                fontFamily: 'Arial'
+                x1: uidX1,
+                y1: uidY1,
+                x2: uidX2,
+                y2: uidY2,
+                fontFamily: 'Hiragino Kaku Gothic Pro'
             }
         ];
         
@@ -2251,15 +2285,17 @@ async function loadCurrentTextPositions() {
             const uidField = textFields.find(field => field.name === 'uid');
             
             if (badgeNameField) {
-                document.getElementById('badge-name-x').value = badgeNameField.x || 100;
-                document.getElementById('badge-name-y').value = badgeNameField.y || 300;
-                document.getElementById('badge-name-size').value = badgeNameField.fontSize || 56;
+                document.getElementById('badge-name-x1').value = badgeNameField.x1 || 100;
+                document.getElementById('badge-name-y1').value = badgeNameField.y1 || 250;
+                document.getElementById('badge-name-x2').value = badgeNameField.x2 || 500;
+                document.getElementById('badge-name-y2').value = badgeNameField.y2 || 350;
             }
             
             if (uidField) {
-                document.getElementById('uid-x').value = uidField.x || 100;
-                document.getElementById('uid-y').value = uidField.y || 700;
-                document.getElementById('uid-size').value = uidField.fontSize || 24;
+                document.getElementById('uid-x1').value = uidField.x1 || 100;
+                document.getElementById('uid-y1').value = uidField.y1 || 650;
+                document.getElementById('uid-x2').value = uidField.x2 || 300;
+                document.getElementById('uid-y2').value = uidField.y2 || 720;
             }
             
             // Update visual editor
@@ -2298,10 +2334,10 @@ function initializeVisualEditor() {
         visualEditor.canvas = canvas;
         visualEditor.ctx = canvas.getContext('2d');
         
-        // Set default positions
+        // Set default bounding boxes
         visualEditor.elements = {
-            badgeName: { x: 50, y: 150, width: 200, height: 40, fontSize: 28, visible: true },
-            uid: { x: 50, y: 350, width: 150, height: 20, fontSize: 14, visible: true }
+            badgeName: { x1: 50, y1: 125, x2: 250, y2: 175, visible: true },
+            uid: { x1: 50, y1: 325, x2: 150, y2: 360, visible: true }
         };
         
         // Event listeners
@@ -2341,34 +2377,71 @@ async function loadEditorPositions() {
             
             const scale = 613 / 1226;
             
-            // Use database values or defaults
-            const badgeNameX = badgeNameField?.x || 100;
-            const badgeNameY = badgeNameField?.y || 300;
-            const badgeNameSize = badgeNameField?.fontSize || 56;
+            // Handle both old format (x,y,fontSize) and new format (x1,y1,x2,y2)
+            let badgeNameX1, badgeNameY1, badgeNameX2, badgeNameY2;
+            let uidX1, uidY1, uidX2, uidY2;
             
-            const uidX = uidField?.x || 100;
-            const uidY = uidField?.y || 700;
-            const uidSize = uidField?.fontSize || 24;
+            if (badgeNameField) {
+                if (badgeNameField.x1 !== undefined) {
+                    // New bounding box format
+                    badgeNameX1 = badgeNameField.x1;
+                    badgeNameY1 = badgeNameField.y1;
+                    badgeNameX2 = badgeNameField.x2;
+                    badgeNameY2 = badgeNameField.y2;
+                } else {
+                    // Old format - convert to bounding box
+                    badgeNameX1 = badgeNameField.x || 100;
+                    badgeNameY1 = badgeNameField.y || 250;
+                    badgeNameX2 = badgeNameX1 + 400;
+                    badgeNameY2 = badgeNameY1 + 100;
+                }
+            } else {
+                // Defaults
+                badgeNameX1 = 100;
+                badgeNameY1 = 250;
+                badgeNameX2 = 500;
+                badgeNameY2 = 350;
+            }
+            
+            if (uidField) {
+                if (uidField.x1 !== undefined) {
+                    // New bounding box format
+                    uidX1 = uidField.x1;
+                    uidY1 = uidField.y1;
+                    uidX2 = uidField.x2;
+                    uidY2 = uidField.y2;
+                } else {
+                    // Old format - convert to bounding box
+                    uidX1 = uidField.x || 100;
+                    uidY1 = uidField.y || 650;
+                    uidX2 = uidX1 + 200;
+                    uidY2 = uidY1 + 70;
+                }
+            } else {
+                // Defaults
+                uidX1 = 100;
+                uidY1 = 650;
+                uidX2 = 300;
+                uidY2 = 720;
+            }
             
             visualEditor.elements.badgeName = {
-                x: badgeNameX * scale,
-                y: badgeNameY * scale,
-                width: 200,
-                height: badgeNameSize * scale,
-                fontSize: badgeNameSize * scale,
+                x1: badgeNameX1 * scale,
+                y1: badgeNameY1 * scale,
+                x2: badgeNameX2 * scale,
+                y2: badgeNameY2 * scale,
                 visible: true
             };
             
             visualEditor.elements.uid = {
-                x: uidX * scale,
-                y: uidY * scale,
-                width: 150,
-                height: uidSize * scale,
-                fontSize: uidSize * scale,
+                x1: uidX1 * scale,
+                y1: uidY1 * scale,
+                x2: uidX2 * scale,
+                y2: uidY2 * scale,
                 visible: true
             };
             
-            console.log('Loaded positions from database:', { badgeNameX, badgeNameY, uidX, uidY });
+            console.log('Loaded positions from database:', { badgeNameX1, badgeNameY1, badgeNameX2, badgeNameY2, uidX1, uidY1, uidX2, uidY2 });
             drawEditor();
         }
     } catch (error) {
@@ -2397,28 +2470,43 @@ function drawEditor() {
         ctx.strokeRect(0, 0, canvas.width, canvas.height);
     }
     
-    // Draw badge name element
+    // Draw badge name bounding box
     const badgeName = visualEditor.elements.badgeName;
+    const badgeNameWidth = badgeName.x2 - badgeName.x1;
+    const badgeNameHeight = badgeName.y2 - badgeName.y1;
+    
     ctx.fillStyle = 'rgba(52, 152, 219, 0.2)';
-    ctx.fillRect(badgeName.x, badgeName.y, badgeName.width, badgeName.height);
+    ctx.fillRect(badgeName.x1, badgeName.y1, badgeNameWidth, badgeNameHeight);
     ctx.strokeStyle = '#3498db';
-    ctx.strokeRect(badgeName.x, badgeName.y, badgeName.width, badgeName.height);
+    ctx.strokeRect(badgeName.x1, badgeName.y1, badgeNameWidth, badgeNameHeight);
     
+    // Auto-scale text for badge name
+    const badgeNameText = 'Badge Name';
+    let badgeNameFontSize = Math.min(badgeNameHeight * 0.6, badgeNameWidth / badgeNameText.length * 1.2);
     ctx.fillStyle = '#2c3e50';
-    ctx.font = '16px Arial';
+    ctx.font = `${badgeNameFontSize}px Arial`;
     ctx.textAlign = 'center';
-    ctx.fillText('Badge Name', badgeName.x + badgeName.width/2, badgeName.y + badgeName.height/2 + 5);
+    ctx.textBaseline = 'middle';
+    ctx.fillText(badgeNameText, badgeName.x1 + badgeNameWidth/2, badgeName.y1 + badgeNameHeight/2);
     
-    // Draw UID element
+    // Draw UID bounding box
     const uid = visualEditor.elements.uid;
-    ctx.fillStyle = 'rgba(231, 76, 60, 0.2)';
-    ctx.fillRect(uid.x, uid.y, uid.width, uid.height);
-    ctx.strokeStyle = '#e74c3c';
-    ctx.strokeRect(uid.x, uid.y, uid.width, uid.height);
+    const uidWidth = uid.x2 - uid.x1;
+    const uidHeight = uid.y2 - uid.y1;
     
+    ctx.fillStyle = 'rgba(231, 76, 60, 0.2)';
+    ctx.fillRect(uid.x1, uid.y1, uidWidth, uidHeight);
+    ctx.strokeStyle = '#e74c3c';
+    ctx.strokeRect(uid.x1, uid.y1, uidWidth, uidHeight);
+    
+    // Auto-scale text for UID
+    const uidText = 'UID123';
+    let uidFontSize = Math.min(uidHeight * 0.6, uidWidth / uidText.length * 1.2);
     ctx.fillStyle = '#2c3e50';
-    ctx.font = '12px Arial';
-    ctx.fillText('UID123', uid.x + uid.width/2, uid.y + uid.height/2 + 3);
+    ctx.font = `${uidFontSize}px Arial`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(uidText, uid.x1 + uidWidth/2, uid.y1 + uidHeight/2);
 }
 
 // Handle mouse events
@@ -2427,18 +2515,44 @@ function handleEditorMouseDown(e) {
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
     
+    visualEditor.isResizing = false;
+    visualEditor.isDragging = false;
+    
     // Check which element was clicked
     Object.entries(visualEditor.elements).forEach(([key, element]) => {
         if (!element.visible) return;
         
-        if (x >= element.x && x <= element.x + element.width &&
-            y >= element.y && y <= element.y + element.height) {
+        const resizeZone = 10; // pixels from edge for resize
+        
+        // Check if clicking on resize areas (edges/corners)
+        const onLeftEdge = x >= element.x1 - resizeZone && x <= element.x1 + resizeZone;
+        const onRightEdge = x >= element.x2 - resizeZone && x <= element.x2 + resizeZone;
+        const onTopEdge = y >= element.y1 - resizeZone && y <= element.y1 + resizeZone;
+        const onBottomEdge = y >= element.y2 - resizeZone && y <= element.y2 + resizeZone;
+        
+        const inBounds = x >= element.x1 - resizeZone && x <= element.x2 + resizeZone &&
+                        y >= element.y1 - resizeZone && y <= element.y2 + resizeZone;
+        
+        if (inBounds) {
             visualEditor.selectedElement = key;
-            visualEditor.isDragging = true;
-            visualEditor.dragOffset = {
-                x: x - element.x,
-                y: y - element.y
-            };
+            
+            if (onLeftEdge || onRightEdge || onTopEdge || onBottomEdge) {
+                // Resize mode
+                visualEditor.isResizing = true;
+                visualEditor.resizeMode = {
+                    left: onLeftEdge,
+                    right: onRightEdge,
+                    top: onTopEdge,
+                    bottom: onBottomEdge
+                };
+            } else {
+                // Drag mode
+                visualEditor.isDragging = true;
+                visualEditor.dragOffset = {
+                    x: x - element.x1,
+                    y: y - element.y1
+                };
+            }
         }
     });
     
@@ -2446,24 +2560,55 @@ function handleEditorMouseDown(e) {
 }
 
 function handleEditorMouseMove(e) {
-    if (!visualEditor.isDragging || !visualEditor.selectedElement) return;
+    if ((!visualEditor.isDragging && !visualEditor.isResizing) || !visualEditor.selectedElement) return;
     
     const rect = visualEditor.canvas.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
     
     const element = visualEditor.elements[visualEditor.selectedElement];
-    element.x = Math.max(0, Math.min(x - visualEditor.dragOffset.x, visualEditor.canvas.width - element.width));
-    element.y = Math.max(0, Math.min(y - visualEditor.dragOffset.y, visualEditor.canvas.height - element.height));
+    
+    if (visualEditor.isDragging) {
+        // Drag mode - move the entire box
+        const width = element.x2 - element.x1;
+        const height = element.y2 - element.y1;
+        
+        const newX1 = Math.max(0, Math.min(x - visualEditor.dragOffset.x, visualEditor.canvas.width - width));
+        const newY1 = Math.max(0, Math.min(y - visualEditor.dragOffset.y, visualEditor.canvas.height - height));
+        
+        element.x1 = newX1;
+        element.y1 = newY1;
+        element.x2 = newX1 + width;
+        element.y2 = newY1 + height;
+        
+    } else if (visualEditor.isResizing) {
+        // Resize mode - adjust edges
+        const minSize = 20; // Minimum box size
+        
+        if (visualEditor.resizeMode.left) {
+            element.x1 = Math.max(0, Math.min(x, element.x2 - minSize));
+        }
+        if (visualEditor.resizeMode.right) {
+            element.x2 = Math.max(element.x1 + minSize, Math.min(x, visualEditor.canvas.width));
+        }
+        if (visualEditor.resizeMode.top) {
+            element.y1 = Math.max(0, Math.min(y, element.y2 - minSize));
+        }
+        if (visualEditor.resizeMode.bottom) {
+            element.y2 = Math.max(element.y1 + minSize, Math.min(y, visualEditor.canvas.height));
+        }
+    }
     
     drawEditor();
 }
 
 function handleEditorMouseUp(e) {
-    if (visualEditor.isDragging) {
+    if (visualEditor.isDragging || visualEditor.isResizing) {
         updateInputsFromEditor();
     }
     visualEditor.isDragging = false;
+    visualEditor.isResizing = false;
+    visualEditor.resizeMode = null;
 }
 
 
@@ -2475,21 +2620,33 @@ function updateInputsFromEditor() {
     const badgeName = visualEditor.elements.badgeName;
     const uid = visualEditor.elements.uid;
     
-    const badgeNameXInput = document.getElementById('badge-name-x');
-    const badgeNameYInput = document.getElementById('badge-name-y');
-    const uidXInput = document.getElementById('uid-x');
-    const uidYInput = document.getElementById('uid-y');
+    const badgeNameX1Input = document.getElementById('badge-name-x1');
+    const badgeNameY1Input = document.getElementById('badge-name-y1');
+    const badgeNameX2Input = document.getElementById('badge-name-x2');
+    const badgeNameY2Input = document.getElementById('badge-name-y2');
+    const uidX1Input = document.getElementById('uid-x1');
+    const uidY1Input = document.getElementById('uid-y1');
+    const uidX2Input = document.getElementById('uid-x2');
+    const uidY2Input = document.getElementById('uid-y2');
     
-    if (badgeNameXInput) badgeNameXInput.value = Math.round(badgeName.x * scale);
-    if (badgeNameYInput) badgeNameYInput.value = Math.round(badgeName.y * scale);
-    if (uidXInput) uidXInput.value = Math.round(uid.x * scale);
-    if (uidYInput) uidYInput.value = Math.round(uid.y * scale);
+    if (badgeNameX1Input) badgeNameX1Input.value = Math.round(badgeName.x1 * scale);
+    if (badgeNameY1Input) badgeNameY1Input.value = Math.round(badgeName.y1 * scale);
+    if (badgeNameX2Input) badgeNameX2Input.value = Math.round(badgeName.x2 * scale);
+    if (badgeNameY2Input) badgeNameY2Input.value = Math.round(badgeName.y2 * scale);
+    if (uidX1Input) uidX1Input.value = Math.round(uid.x1 * scale);
+    if (uidY1Input) uidY1Input.value = Math.round(uid.y1 * scale);
+    if (uidX2Input) uidX2Input.value = Math.round(uid.x2 * scale);
+    if (uidY2Input) uidY2Input.value = Math.round(uid.y2 * scale);
     
     console.log('Updated inputs:', {
-        badgeNameX: Math.round(badgeName.x * scale),
-        badgeNameY: Math.round(badgeName.y * scale),
-        uidX: Math.round(uid.x * scale),
-        uidY: Math.round(uid.y * scale)
+        badgeNameX1: Math.round(badgeName.x1 * scale),
+        badgeNameY1: Math.round(badgeName.y1 * scale),
+        badgeNameX2: Math.round(badgeName.x2 * scale),
+        badgeNameY2: Math.round(badgeName.y2 * scale),
+        uidX1: Math.round(uid.x1 * scale),
+        uidY1: Math.round(uid.y1 * scale),
+        uidX2: Math.round(uid.x2 * scale),
+        uidY2: Math.round(uid.y2 * scale)
     });
 }
 
@@ -2507,12 +2664,14 @@ function loadBadgeImageForEditor() {
 
 // Reset text positions to default
 function resetTextPositions() {
-    document.getElementById('badge-name-x').value = 100;
-    document.getElementById('badge-name-y').value = 300;
-    document.getElementById('badge-name-size').value = 56;
-    document.getElementById('uid-x').value = 100;
-    document.getElementById('uid-y').value = 700;
-    document.getElementById('uid-size').value = 24;
+    document.getElementById('badge-name-x1').value = 100;
+    document.getElementById('badge-name-y1').value = 250;
+    document.getElementById('badge-name-x2').value = 500;
+    document.getElementById('badge-name-y2').value = 350;
+    document.getElementById('uid-x1').value = 100;
+    document.getElementById('uid-y1').value = 650;
+    document.getElementById('uid-x2').value = 300;
+    document.getElementById('uid-y2').value = 720;
     
     loadEditorPositions();
     drawEditor();
