@@ -8,9 +8,154 @@
 </head>
 <body>
     <div class="container">
-        <h1>Festival Badge Printer</h1>
-        <p>Badge printing system is initializing...</p>
+        <header>
+            <h1>Festival Badge Printer</h1>
+            <div class="printer-status" id="printer-status" role="status" aria-live="polite">
+                <span class="status-indicator" id="status-indicator"></span>
+                <span class="status-text" id="status-text">Checking printer connection...</span>
+            </div>
+        </header>
+
+        <main>
+            <section class="badge-creation" aria-labelledby="badge-creation-heading">
+                <h2 id="badge-creation-heading">Create Badge</h2>
+                
+                <form class="badge-form" id="badge-form" novalidate>
+                    <div class="form-section">
+                        <h3>Template Selection</h3>
+                        <div class="template-selection" role="radiogroup" aria-labelledby="template-selection-label">
+                            <label id="template-selection-label" class="sr-only">Select badge template</label>
+                            <div class="template-grid" id="template-grid">
+                                <!-- Templates will be loaded dynamically -->
+                                <div class="template-loading">Loading templates...</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-section">
+                        <h3>Badge Information</h3>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="uid-input">Unique ID (UID)</label>
+                                <input 
+                                    type="text" 
+                                    id="uid-input" 
+                                    name="uid" 
+                                    required 
+                                    aria-describedby="uid-help uid-error"
+                                    autocomplete="off"
+                                >
+                                <div class="help-text" id="uid-help">Enter a unique identifier for this badge</div>
+                                <div class="error-message" id="uid-error" role="alert" aria-live="polite"></div>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="badge-name-input">Badge Name</label>
+                                <input 
+                                    type="text" 
+                                    id="badge-name-input" 
+                                    name="badgeName" 
+                                    required 
+                                    maxlength="50"
+                                    aria-describedby="badge-name-help badge-name-error"
+                                    autocomplete="name"
+                                >
+                                <div class="help-text" id="badge-name-help">Enter the name to display on the badge (max 50 characters)</div>
+                                <div class="error-message" id="badge-name-error" role="alert" aria-live="polite"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary" id="submit-badge" disabled>
+                            <span class="btn-text">Create Badge</span>
+                            <span class="btn-loading" aria-hidden="true">Creating...</span>
+                        </button>
+                        <button type="reset" class="btn btn-secondary">Clear Form</button>
+                    </div>
+                </form>
+            </section>
+
+            <section class="queue-section" aria-labelledby="queue-heading">
+                <h2 id="queue-heading">Print Queue</h2>
+                
+                <div class="queue-summary" role="status" aria-live="polite">
+                    <div class="queue-stats">
+                        <span class="stat">
+                            <span class="stat-number" id="queue-count">0</span>
+                            <span class="stat-label">Jobs in Queue</span>
+                        </span>
+                        <span class="stat">
+                            <span class="stat-number" id="processing-count">0</span>
+                            <span class="stat-label">Processing</span>
+                        </span>
+                        <span class="stat">
+                            <span class="stat-number" id="completed-count">0</span>
+                            <span class="stat-label">Completed</span>
+                        </span>
+                    </div>
+                </div>
+
+                <div class="queue-container">
+                    <div class="queue-header">
+                        <h3>Current Jobs</h3>
+                        <button class="btn btn-small btn-secondary" id="refresh-queue" aria-label="Refresh queue">
+                            Refresh
+                        </button>
+                    </div>
+                    
+                    <div class="job-list" id="job-list" role="log" aria-live="polite" aria-label="Print job status updates">
+                        <div class="empty-queue">
+                            <p>No jobs in queue</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <footer>
+            <div class="system-info">
+                <span>Festival Badge Printer v1.0</span>
+                <span id="connection-status">Connected</span>
+            </div>
+        </footer>
     </div>
+
+    <!-- Hidden template for job items -->
+    <template id="job-item-template">
+        <div class="job-item" data-job-id="">
+            <div class="job-info">
+                <div class="job-header">
+                    <span class="job-uid"></span>
+                    <span class="job-status"></span>
+                </div>
+                <div class="job-details">
+                    <span class="job-name"></span>
+                    <span class="job-template"></span>
+                </div>
+                <div class="job-timestamp"></div>
+            </div>
+            <div class="job-actions">
+                <button class="btn btn-small btn-danger job-cancel" aria-label="Cancel job">Cancel</button>
+                <button class="btn btn-small btn-secondary job-retry" aria-label="Retry job" style="display: none;">Retry</button>
+            </div>
+        </div>
+    </template>
+
+    <!-- Hidden template for template selection -->
+    <template id="template-item-template">
+        <div class="template-item">
+            <input type="radio" name="template" class="template-radio" id="">
+            <label class="template-label" for="">
+                <div class="template-preview">
+                    <img src="" alt="" class="template-image">
+                </div>
+                <div class="template-info">
+                    <span class="template-name"></span>
+                </div>
+            </label>
+        </div>
+    </template>
     
     <script src="/socket.io/socket.io.js"></script>
     <script src="/js/app.js"></script>
