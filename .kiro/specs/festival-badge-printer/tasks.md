@@ -16,7 +16,7 @@
   - Write unit tests for all database operations
   - _Requirements: 4.1, 4.2_
 
-- [-] 3. Create basic Express server with static file serving
+- [x] 3. Create basic Express server with static file serving
 
   - Set up Express.js server with middleware for JSON parsing and static files
   - Configure Socket.io for real-time communication
