@@ -301,6 +301,7 @@ const initializeServices = async () => {
     // Make services available to routes
     app.set('queueManager', queueManager);
     app.set('dbConnection', dbConnection);
+    app.set('printerInterface', printerInterface);
     
     console.log('Services initialized successfully');
     

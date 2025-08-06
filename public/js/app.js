@@ -90,6 +90,7 @@ document.addEventListener('DOMContentLoaded', () => {
     loadTemplates();
     loadUsedUIDs();
     loadQueueStatus();
+    checkInitialPrinterStatus();
 });
 
 // Initialize DOM element references
@@ -159,6 +160,12 @@ function initializeFormHandlers() {
     const viewHistoryButton = document.getElementById('view-history');
     if (viewHistoryButton) {
         viewHistoryButton.addEventListener('click', showJobHistoryModal);
+    }
+    
+    // Printer setup button
+    const printerSetupButton = document.getElementById('printer-setup-btn');
+    if (printerSetupButton) {
+        printerSetupButton.addEventListener('click', showPrinterSetupModal);
     }
     
     // Job list event delegation for cancel/retry/intervention buttons
@@ -567,18 +574,37 @@ function showSuccessMessage(message) {
 }
 
 // Update connection status
-function updateConnectionStatus(isConnected) {
+function updateConnectionStatus(isConnected, statusText = null) {
     elements.connectionStatus.textContent = isConnected ? 'Connected' : 'Disconnected';
     elements.connectionStatus.className = isConnected ? 'connected' : 'disconnected';
     
     elements.statusIndicator.className = `status-indicator ${isConnected ? 'connected' : 'disconnected'}`;
-    elements.statusText.textContent = isConnected ? 'Printer ready' : 'Connection lost';
+    elements.statusText.textContent = statusText || (isConnected ? 'Printer ready' : 'No printer connected');
     
     // Update retry count for connection status
     if (isConnected) {
         appState.connectionRetryCount = 0;
     } else {
         appState.connectionRetryCount++;
+    }
+}
+
+// Check printer status on page load
+async function checkInitialPrinterStatus() {
+    try {
+        const response = await fetch('/api/printers/status');
+        
+        if (response.ok) {
+            const data = await response.json();
+            if (data.success && data.status) {
+                const status = data.status;
+                updateConnectionStatus(status.isConnected, 
+                    status.isConnected ? `Connected to ${status.printerName || status.printerId}` : 'No printer connected');
+            }
+        }
+    } catch (error) {
+        console.log('Could not check initial printer status:', error.message);
+        // Don't show error - this is expected if no printer is set up yet
     }
 }
 
@@ -1341,4 +1367,465 @@ if (typeof module !== 'undefined' && module.exports) {
         loadJobHistory,
         CONFIG
     };
+}
+// Print
+er Setup Modal Functions
+function showPrinterSetupModal() {
+    const modal = document.getElementById('printer-setup-modal');
+    const overlay = document.getElementById('printer-setup-overlay');
+    const closeButton = document.getElementById('printer-setup-close');
+    
+    // Show modal
+    modal.classList.add('active');
+    modal.setAttribute('aria-hidden', 'false');
+    
+    // Initialize modal content
+    initializePrinterSetupModal();
+    
+    // Event handlers
+    const closeModal = () => {
+        modal.classList.remove('active');
+        modal.setAttribute('aria-hidden', 'true');
+    };
+    
+    overlay.addEventListener('click', closeModal);
+    closeButton.addEventListener('click', closeModal);
+    
+    // Handle escape key
+    const handleEscape = (e) => {
+        if (e.key === 'Escape') {
+            closeModal();
+            document.removeEventListener('keydown', handleEscape);
+        }
+    };
+    document.addEventListener('keydown', handleEscape);
+    
+    // Tab navigation
+    const tabButtons = modal.querySelectorAll('.tab-button');
+    const tabPanels = modal.querySelectorAll('.tab-panel');
+    
+    tabButtons.forEach(button => {
+        button.addEventListener('click', () => {
+            const targetTab = button.getAttribute('data-tab');
+            
+            // Update active tab button
+            tabButtons.forEach(btn => btn.classList.remove('active'));
+            button.classList.add('active');
+            
+            // Update active tab panel
+            tabPanels.forEach(panel => panel.classList.remove('active'));
+            document.getElementById(`${targetTab}-panel`).classList.add('active');
+            
+            // Load tab content
+            loadTabContent(targetTab);
+        });
+    });
+    
+    // Load initial tab content
+    loadTabContent('discovery');
+}
+
+function initializePrinterSetupModal() {
+    // Initialize discovery tab handlers
+    const discoverButton = document.getElementById('discover-printers');
+    const refreshButton = document.getElementById('refresh-printers');
+    
+    discoverButton.addEventListener('click', discoverPrinters);
+    refreshButton.addEventListener('click', discoverPrinters);
+    
+    // Initialize status tab handlers
+    const testButton = document.getElementById('test-connectivity');
+    const refreshStatusButton = document.getElementById('refresh-status');
+    const disconnectButton = document.getElementById('disconnect-printer');
+    
+    testButton.addEventListener('click', testPrinterConnectivity);
+    refreshStatusButton.addEventListener('click', loadPrinterStatus);
+    disconnectButton.addEventListener('click', disconnectPrinter);
+}
+
+function loadTabContent(tabName) {
+    switch (tabName) {
+        case 'discovery':
+            // Discovery tab is loaded on demand when user clicks discover
+            break;
+        case 'status':
+            loadPrinterStatus();
+            break;
+        case 'presets':
+            loadPrinterPresets();
+            break;
+        case 'troubleshooting':
+            // Static content, no loading needed
+            break;
+    }
+}
+
+async function discoverPrinters() {
+    const discoverButton = document.getElementById('discover-printers');
+    const printerList = document.getElementById('printer-list');
+    
+    try {
+        // Update button state
+        discoverButton.classList.add('loading');
+        discoverButton.disabled = true;
+        
+        // Show loading state
+        printerList.innerHTML = '<div class="printer-loading">Discovering printers...</div>';
+        
+        const response = await fetch('/api/printers');
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            renderPrinterList(data.printers);
+        } else {
+            throw new Error(data.message || 'Failed to discover printers');
+        }
+        
+    } catch (error) {
+        console.error('Printer discovery error:', error);
+        printerList.innerHTML = `<div class="printer-loading" style="color: #e74c3c;">Error: ${error.message}</div>`;
+    } finally {
+        discoverButton.classList.remove('loading');
+        discoverButton.disabled = false;
+    }
+}
+
+function renderPrinterList(printers) {
+    const printerList = document.getElementById('printer-list');
+    const printerTemplate = document.getElementById('printer-item-template');
+    
+    if (printers.length === 0) {
+        printerList.innerHTML = '<div class="printer-loading">No printers found. Make sure your printer is connected and powered on.</div>';
+        return;
+    }
+    
+    printerList.innerHTML = '';
+    
+    printers.forEach(printer => {
+        const printerElement = printerTemplate.content.cloneNode(true);
+        
+        // Set printer data
+        const printerItem = printerElement.querySelector('.printer-item');
+        printerItem.setAttribute('data-printer-id', printer.id);
+        
+        printerElement.querySelector('.printer-name').textContent = printer.name;
+        printerElement.querySelector('.printer-type').textContent = printer.type || 'USB';
+        printerElement.querySelector('.printer-platform').textContent = printer.platform || 'Unknown';
+        
+        // Set status indicator
+        const statusDot = printerElement.querySelector('.status-dot');
+        const statusLabel = printerElement.querySelector('.status-label');
+        
+        if (printer.isConnected) {
+            statusDot.classList.add('connected');
+            statusLabel.textContent = printer.status || 'Ready';
+        } else {
+            statusDot.classList.add('disconnected');
+            statusLabel.textContent = 'Offline';
+        }
+        
+        // Set up action buttons
+        const connectButton = printerElement.querySelector('.printer-connect');
+        const testButton = printerElement.querySelector('.printer-test');
+        
+        connectButton.addEventListener('click', () => connectToPrinter(printer.id));
+        testButton.addEventListener('click', () => testSpecificPrinter(printer.id));
+        
+        // Disable connect button if printer is offline
+        if (!printer.isConnected) {
+            connectButton.disabled = true;
+            connectButton.textContent = 'Offline';
+        }
+        
+        printerList.appendChild(printerElement);
+    });
+}
+
+async function connectToPrinter(printerId) {
+    try {
+        const response = await fetch(`/api/printers/${printerId}/connect`, {
+            method: 'POST'
+        });
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            showToastNotification(`Connected to printer: ${printerId}`, 'completed');
+            
+            // Update main printer status
+            updateConnectionStatus(true);
+            elements.statusText.textContent = `Connected to ${printerId}`;
+            
+            // Refresh printer list to show updated status
+            discoverPrinters();
+            
+            // Switch to status tab to show connection details
+            const statusTab = document.querySelector('[data-tab="status"]');
+            if (statusTab) {
+                statusTab.click();
+            }
+        } else {
+            throw new Error(data.message || 'Failed to connect to printer');
+        }
+        
+    } catch (error) {
+        console.error('Printer connection error:', error);
+        showToastNotification(`Failed to connect: ${error.message}`, 'failed');
+    }
+}
+
+async function testSpecificPrinter(printerId) {
+    try {
+        // First connect to the printer
+        await connectToPrinter(printerId);
+        
+        // Then test connectivity
+        await testPrinterConnectivity();
+        
+    } catch (error) {
+        console.error('Printer test error:', error);
+        showToastNotification(`Test failed: ${error.message}`, 'failed');
+    }
+}
+
+async function loadPrinterStatus() {
+    const statusDisplay = document.getElementById('detailed-status');
+    
+    try {
+        statusDisplay.innerHTML = '<div class="status-loading">Loading printer status...</div>';
+        
+        const response = await fetch('/api/printers/status');
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            renderPrinterStatus(data.status);
+        } else {
+            throw new Error(data.message || 'Failed to get printer status');
+        }
+        
+    } catch (error) {
+        console.error('Printer status error:', error);
+        statusDisplay.innerHTML = `<div class="status-loading" style="color: #e74c3c;">Error: ${error.message}</div>`;
+    }
+}
+
+function renderPrinterStatus(status) {
+    const statusDisplay = document.getElementById('detailed-status');
+    
+    const statusItems = [
+        { label: 'Connection Status', value: status.isConnected ? 'Connected' : 'Disconnected', class: status.isConnected ? 'connected' : 'disconnected' },
+        { label: 'Printer Name', value: status.printerName || status.printerId || 'None selected' },
+        { label: 'Printer Status', value: status.status || 'Unknown' },
+        { label: 'Last Updated', value: new Date().toLocaleString() }
+    ];
+    
+    if (status.error) {
+        statusItems.push({ label: 'Error', value: status.error, class: 'disconnected' });
+    }
+    
+    const statusHTML = statusItems.map(item => `
+        <div class="status-item">
+            <span class="status-label">${item.label}:</span>
+            <span class="status-value ${item.class || ''}">${item.value}</span>
+        </div>
+    `).join('');
+    
+    statusDisplay.innerHTML = statusHTML;
+}
+
+async function testPrinterConnectivity() {
+    const testButton = document.getElementById('test-connectivity');
+    
+    try {
+        testButton.classList.add('loading');
+        testButton.disabled = true;
+        
+        const response = await fetch('/api/printers/test', {
+            method: 'POST'
+        });
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            showToastNotification('Printer connectivity test passed', 'completed');
+            
+            // Show test results
+            const testResult = data.testResult;
+            const resultHTML = `
+                <div class="status-item">
+                    <span class="status-label">Test Result:</span>
+                    <span class="status-value connected">PASSED</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">Connectivity:</span>
+                    <span class="status-value ${testResult.connectivity ? 'connected' : 'disconnected'}">
+                        ${testResult.connectivity ? 'OK' : 'FAILED'}
+                    </span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">Printer:</span>
+                    <span class="status-value">${testResult.printerName}</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">Status:</span>
+                    <span class="status-value">${testResult.status}</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">Test Time:</span>
+                    <span class="status-value">${new Date(testResult.timestamp).toLocaleString()}</span>
+                </div>
+            `;
+            
+            document.getElementById('detailed-status').innerHTML = resultHTML;
+            
+        } else {
+            throw new Error(data.message || 'Connectivity test failed');
+        }
+        
+    } catch (error) {
+        console.error('Connectivity test error:', error);
+        showToastNotification(`Connectivity test failed: ${error.message}`, 'failed');
+        
+        // Show failure in status display
+        const failureHTML = `
+            <div class="status-item">
+                <span class="status-label">Test Result:</span>
+                <span class="status-value disconnected">FAILED</span>
+            </div>
+            <div class="status-item">
+                <span class="status-label">Error:</span>
+                <span class="status-value disconnected">${error.message}</span>
+            </div>
+        `;
+        
+        document.getElementById('detailed-status').innerHTML = failureHTML;
+        
+    } finally {
+        testButton.classList.remove('loading');
+        testButton.disabled = false;
+    }
+}
+
+async function disconnectPrinter() {
+    const disconnectButton = document.getElementById('disconnect-printer');
+    
+    try {
+        disconnectButton.disabled = true;
+        
+        const response = await fetch('/api/printers/disconnect', {
+            method: 'POST'
+        });
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            showToastNotification('Printer disconnected', 'info');
+            
+            // Update main printer status
+            updateConnectionStatus(false);
+            elements.statusText.textContent = 'No printer connected';
+            
+            // Refresh status display
+            loadPrinterStatus();
+            
+        } else {
+            throw new Error(data.message || 'Failed to disconnect printer');
+        }
+        
+    } catch (error) {
+        console.error('Disconnect error:', error);
+        showToastNotification(`Disconnect failed: ${error.message}`, 'failed');
+    } finally {
+        disconnectButton.disabled = false;
+    }
+}
+
+async function loadPrinterPresets() {
+    const presetsList = document.getElementById('presets-list');
+    
+    try {
+        presetsList.innerHTML = '<div class="presets-loading">Loading printer presets...</div>';
+        
+        const response = await fetch('/api/printers/presets');
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            renderPresetsList(data.presets);
+        } else {
+            throw new Error(data.message || 'Failed to load presets');
+        }
+        
+    } catch (error) {
+        console.error('Presets loading error:', error);
+        presetsList.innerHTML = `<div class="presets-loading" style="color: #e74c3c;">Error: ${error.message}</div>`;
+    }
+}
+
+function renderPresetsList(presets) {
+    const presetsList = document.getElementById('presets-list');
+    const presetTemplate = document.getElementById('preset-item-template');
+    
+    if (presets.length === 0) {
+        presetsList.innerHTML = '<div class="presets-loading">No presets available</div>';
+        return;
+    }
+    
+    presetsList.innerHTML = '';
+    
+    presets.forEach(preset => {
+        const presetElement = presetTemplate.content.cloneNode(true);
+        
+        presetElement.querySelector('.preset-name').textContent = preset.name;
+        presetElement.querySelector('.preset-description').textContent = preset.description;
+        
+        // Format preset options
+        const options = preset.options || {};
+        const optionsText = Object.entries(options)
+            .map(([key, value]) => `${key}: ${value}`)
+            .join(', ');
+        presetElement.querySelector('.preset-options').textContent = optionsText;
+        
+        // Set up select button
+        const selectButton = presetElement.querySelector('.preset-select');
+        selectButton.addEventListener('click', () => selectPreset(preset.name));
+        
+        presetsList.appendChild(presetElement);
+    });
+}
+
+function selectPreset(presetName) {
+    // For now, just show a notification
+    // In a full implementation, this would apply the preset to the current printer
+    showToastNotification(`Selected preset: ${presetName}`, 'info');
+    
+    // You could also store the selected preset in application state
+    // and use it for future print jobs
+    console.log('Selected preset:', presetName);
 }

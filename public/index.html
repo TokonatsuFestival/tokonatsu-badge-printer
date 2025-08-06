@@ -13,6 +13,9 @@
             <div class="printer-status" id="printer-status" role="status" aria-live="polite">
                 <span class="status-indicator" id="status-indicator"></span>
                 <span class="status-text" id="status-text">Checking printer connection...</span>
+                <button class="btn btn-small btn-secondary" id="printer-setup-btn" aria-label="Open printer setup">
+                    Setup
+                </button>
             </div>
         </header>
 
@@ -159,6 +162,157 @@
                     <span class="template-name"></span>
                 </div>
             </label>
+        </div>
+    </template>
+
+    <!-- Printer Setup Modal -->
+    <div class="modal" id="printer-setup-modal" role="dialog" aria-labelledby="printer-setup-title" aria-hidden="true">
+        <div class="modal-overlay" id="printer-setup-overlay"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="printer-setup-title">Printer Setup & Configuration</h2>
+                <button class="modal-close" id="printer-setup-close" aria-label="Close printer setup">×</button>
+            </div>
+            
+            <div class="modal-body">
+                <div class="setup-tabs">
+                    <button class="tab-button active" data-tab="discovery" aria-controls="discovery-panel">Discovery</button>
+                    <button class="tab-button" data-tab="status" aria-controls="status-panel">Status</button>
+                    <button class="tab-button" data-tab="presets" aria-controls="presets-panel">Presets</button>
+                    <button class="tab-button" data-tab="troubleshooting" aria-controls="troubleshooting-panel">Help</button>
+                </div>
+
+                <!-- Discovery Tab -->
+                <div class="tab-panel active" id="discovery-panel" role="tabpanel" aria-labelledby="discovery-tab">
+                    <div class="panel-section">
+                        <h3>Available Printers</h3>
+                        <div class="printer-actions">
+                            <button class="btn btn-primary" id="discover-printers">
+                                <span class="btn-text">Discover Printers</span>
+                                <span class="btn-loading">Discovering...</span>
+                            </button>
+                            <button class="btn btn-secondary" id="refresh-printers">Refresh</button>
+                        </div>
+                        
+                        <div class="printer-list" id="printer-list">
+                            <div class="printer-loading">Click "Discover Printers" to find available printers</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Status Tab -->
+                <div class="tab-panel" id="status-panel" role="tabpanel" aria-labelledby="status-tab">
+                    <div class="panel-section">
+                        <h3>Current Printer Status</h3>
+                        <div class="status-display" id="detailed-status">
+                            <div class="status-loading">Loading printer status...</div>
+                        </div>
+                        
+                        <div class="status-actions">
+                            <button class="btn btn-primary" id="test-connectivity">Test Connection</button>
+                            <button class="btn btn-secondary" id="refresh-status">Refresh Status</button>
+                            <button class="btn btn-danger" id="disconnect-printer">Disconnect</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Presets Tab -->
+                <div class="tab-panel" id="presets-panel" role="tabpanel" aria-labelledby="presets-tab">
+                    <div class="panel-section">
+                        <h3>Printer Presets</h3>
+                        <div class="presets-list" id="presets-list">
+                            <div class="presets-loading">Loading available presets...</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Troubleshooting Tab -->
+                <div class="tab-panel" id="troubleshooting-panel" role="tabpanel" aria-labelledby="troubleshooting-tab">
+                    <div class="panel-section">
+                        <h3>Setup Instructions</h3>
+                        <div class="instructions">
+                            <div class="instruction-step">
+                                <h4>1. Connect Your Printer</h4>
+                                <p>Ensure your printer is connected via USB and powered on.</p>
+                            </div>
+                            <div class="instruction-step">
+                                <h4>2. Install Printer Drivers</h4>
+                                <p>Make sure your printer drivers are installed and the printer appears in your system's printer list.</p>
+                            </div>
+                            <div class="instruction-step">
+                                <h4>3. Discover Printers</h4>
+                                <p>Use the "Discovery" tab to find and connect to your printer.</p>
+                            </div>
+                        </div>
+
+                        <h3>Troubleshooting</h3>
+                        <div class="troubleshooting">
+                            <div class="trouble-item">
+                                <h4>Printer Not Found</h4>
+                                <ul>
+                                    <li>Check USB connection</li>
+                                    <li>Verify printer is powered on</li>
+                                    <li>Ensure printer drivers are installed</li>
+                                    <li>Try a different USB port</li>
+                                </ul>
+                            </div>
+                            <div class="trouble-item">
+                                <h4>Connection Failed</h4>
+                                <ul>
+                                    <li>Restart the printer</li>
+                                    <li>Check for paper jams</li>
+                                    <li>Verify printer is not in use by another application</li>
+                                    <li>Try disconnecting and reconnecting</li>
+                                </ul>
+                            </div>
+                            <div class="trouble-item">
+                                <h4>Print Quality Issues</h4>
+                                <ul>
+                                    <li>Check ink/toner levels</li>
+                                    <li>Clean print heads</li>
+                                    <li>Adjust print quality settings in presets</li>
+                                    <li>Use appropriate paper type</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Hidden template for printer items -->
+    <template id="printer-item-template">
+        <div class="printer-item" data-printer-id="">
+            <div class="printer-info">
+                <div class="printer-name"></div>
+                <div class="printer-details">
+                    <span class="printer-type"></span>
+                    <span class="printer-platform"></span>
+                </div>
+            </div>
+            <div class="printer-status-indicator">
+                <span class="status-dot"></span>
+                <span class="status-label"></span>
+            </div>
+            <div class="printer-actions">
+                <button class="btn btn-small btn-primary printer-connect">Connect</button>
+                <button class="btn btn-small btn-secondary printer-test">Test</button>
+            </div>
+        </div>
+    </template>
+
+    <!-- Hidden template for preset items -->
+    <template id="preset-item-template">
+        <div class="preset-item">
+            <div class="preset-info">
+                <div class="preset-name"></div>
+                <div class="preset-description"></div>
+                <div class="preset-options"></div>
+            </div>
+            <div class="preset-actions">
+                <button class="btn btn-small btn-primary preset-select">Select</button>
+            </div>
         </div>
     </template>
     
