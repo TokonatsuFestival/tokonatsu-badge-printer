@@ -1,36 +1,116 @@
 const express = require('express');
 const router = express.Router();
 
+// Input validation middleware
+const validateBadgeInput = (req, res, next) => {
+  let { templateId, uid, badgeName } = req.body;
+  const errors = [];
+
+  // Check required fields and trim whitespace first
+  if (!templateId || typeof templateId !== 'string') {
+    errors.push('templateId is required and must be a string');
+  } else {
+    templateId = templateId.trim();
+    if (templateId === '') {
+      errors.push('templateId cannot be empty');
+    }
+  }
+
+  if (!uid || typeof uid !== 'string') {
+    errors.push('uid is required and must be a string');
+  } else {
+    uid = uid.trim();
+    if (uid === '') {
+      errors.push('uid cannot be empty');
+    }
+  }
+
+  if (!badgeName || typeof badgeName !== 'string') {
+    errors.push('badgeName is required and must be a string');
+  } else {
+    badgeName = badgeName.trim();
+    if (badgeName === '') {
+      errors.push('badgeName cannot be empty');
+    }
+  }
+
+  // Validate field lengths (after trimming)
+  if (uid && uid.length > 50) {
+    errors.push('uid must be 50 characters or less');
+  }
+
+  if (badgeName && badgeName.length > 100) {
+    errors.push('badgeName must be 100 characters or less');
+  }
+
+  // Check for invalid characters in UID (alphanumeric, hyphens, underscores only) - after trimming
+  if (uid && !/^[a-zA-Z0-9_-]+$/.test(uid)) {
+    errors.push('uid can only contain letters, numbers, hyphens, and underscores');
+  }
+
+  if (errors.length > 0) {
+    return res.status(400).json({
+      error: 'Validation failed',
+      message: 'Invalid input data',
+      details: errors,
+      received: { templateId: req.body.templateId, uid: req.body.uid, badgeName: req.body.badgeName }
+    });
+  }
+
+  // Set trimmed values
+  req.body.templateId = templateId;
+  req.body.uid = uid;
+  req.body.badgeName = badgeName;
+
+  next();
+};
+
 // POST /api/badges - Submit new badge job
-router.post('/', async (req, res, next) => {
+router.post('/', validateBadgeInput, async (req, res, next) => {
   try {
     const { templateId, uid, badgeName } = req.body;
     const queueManager = req.app.get('queueManager');
     
     if (!queueManager) {
       return res.status(503).json({ 
-        error: 'Queue manager not available',
+        error: 'Service unavailable',
         message: 'The print queue service is not initialized'
       });
     }
     
-    // Validate required fields
-    if (!templateId || !uid || !badgeName) {
-      return res.status(400).json({
-        error: 'Missing required fields',
-        message: 'templateId, uid, and badgeName are required',
-        received: { templateId, uid, badgeName }
-      });
-    }
-    
-    // Add job to queue
+    // Add job to queue (this will handle UID uniqueness validation)
     const job = await queueManager.addJob({ templateId, uid, badgeName });
     
     res.status(201).json({
       message: 'Badge job added to queue successfully',
-      job
+      job: {
+        id: job.id,
+        templateId: job.templateId,
+        uid: job.uid,
+        badgeName: job.badgeName,
+        status: job.status,
+        createdAt: job.createdAt,
+        retryCount: job.retryCount
+      }
     });
   } catch (error) {
+    // Handle specific validation errors
+    if (error.message.includes('UID') && error.message.includes('already in use')) {
+      return res.status(409).json({
+        error: 'Duplicate UID',
+        message: error.message,
+        field: 'uid'
+      });
+    }
+    
+    if (error.message.includes('Template') && error.message.includes('not found')) {
+      return res.status(404).json({
+        error: 'Template not found',
+        message: error.message,
+        field: 'templateId'
+      });
+    }
+    
     next(error);
   }
 });

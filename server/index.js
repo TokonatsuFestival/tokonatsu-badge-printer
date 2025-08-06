@@ -109,6 +109,7 @@ app.use('/templates', express.static(path.join(__dirname, '../templates')));
 // API Routes structure
 app.use('/api/badges', require('./routes/badges'));
 app.use('/api/queue', require('./routes/queue'));
+app.use('/api/jobs', require('./routes/jobs'));
 app.use('/api/templates', require('./routes/templates'));
 app.use('/api/printers', require('./routes/printers'));
 

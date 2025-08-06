@@ -8,7 +8,7 @@ router.get('/', async (req, res, next) => {
     
     if (!queueManager) {
       return res.status(503).json({ 
-        error: 'Queue manager not available',
+        error: 'Service unavailable',
         message: 'The print queue service is not initialized'
       });
     }
@@ -17,56 +17,12 @@ router.get('/', async (req, res, next) => {
     const queueCapacity = await queueManager.getQueueCapacity();
     
     res.json({
-      ...queueStatus,
-      capacity: queueCapacity
-    });
-  } catch (error) {
-    next(error);
-  }
-});
-
-// DELETE /api/queue/:id - Cancel specific job
-router.delete('/:id', async (req, res, next) => {
-  try {
-    const { id } = req.params;
-    const queueManager = req.app.get('queueManager');
-    
-    if (!queueManager) {
-      return res.status(503).json({ 
-        error: 'Queue manager not available',
-        message: 'The print queue service is not initialized'
-      });
-    }
-    
-    await queueManager.cancelJob(id);
-    
-    res.json({ 
-      message: 'Job cancelled successfully',
-      jobId: id
-    });
-  } catch (error) {
-    next(error);
-  }
-});
-
-// POST /api/queue/:id/retry - Retry a failed job
-router.post('/:id/retry', async (req, res, next) => {
-  try {
-    const { id } = req.params;
-    const queueManager = req.app.get('queueManager');
-    
-    if (!queueManager) {
-      return res.status(503).json({ 
-        error: 'Queue manager not available',
-        message: 'The print queue service is not initialized'
-      });
-    }
-    
-    const retriedJob = await queueManager.retryJob(id);
-    
-    res.json({ 
-      message: 'Job retry scheduled successfully',
-      job: retriedJob
+      message: 'Queue status retrieved successfully',
+      queue: {
+        ...queueStatus,
+        capacity: queueCapacity,
+        timestamp: new Date().toISOString()
+      }
     });
   } catch (error) {
     next(error);
