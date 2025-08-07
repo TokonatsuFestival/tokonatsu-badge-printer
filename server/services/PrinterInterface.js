@@ -273,7 +273,7 @@ class PrinterInterface {
    * @param {string} presetName - Name of the preset to use
    * @returns {Promise<boolean>} Success status
    */
-  async printDocument(documentPath, presetName = 'standard-no-holocote') {
+  async printDocument(documentPath, presetName = 'standard-no-holokote') {
     if (!this.selectedPrinter) {
       throw new Error('No printer selected');
     }
@@ -289,8 +289,37 @@ class PrinterInterface {
 
     try {
       if (process.platform === 'darwin') {
-        // macOS - use lp command
-        const command = `lp -d "${this.selectedPrinter.name}" "${documentPath}"`;
+        // macOS - use lp command with printer-specific options
+        let command = `lp -d "${this.selectedPrinter.name}"`;
+        
+        // Add HoloKote and HoloPatch options if specified
+        if (preset.options.holokote !== undefined) {
+          const holokoteValue = preset.options.holokote ? '1PrintHoloKote' : '0PrintNoHoloKote';
+          command += ` -o "CFHoloKote=${holokoteValue}"`;
+          command += ` -o "CBHoloKote=${holokoteValue}"`;
+          
+          // Also disable HoloPatch when HoloKote is disabled
+          if (!preset.options.holokote) {
+            command += ` -o "CFHoloPatch=0PrintNoHoloPatch"`;
+          }
+        }
+        
+        // Add paper size - fixed to CR80 Card
+        command += ` -o "PageSize=CR80Card"`;
+        command += ` -o "media=CR80Card"`;
+        
+        // Add scaling to fit width with bleed
+        command += ` -o "fit-to-page"`;
+        command += ` -o "scaling=100"`;
+        command += ` -o "print-scaling=fill"`;
+        
+        // Add quality settings
+        if (preset.options.quality) {
+          command += ` -o "print-quality=${preset.options.quality}"`;
+        }
+        
+        command += ` "${documentPath}"`;
+        console.log('Executing print command:', command);
         await execAsync(command);
       } else if (process.platform === 'win32') {
         // Windows - use pdf-to-printer
@@ -342,44 +371,44 @@ class PrinterInterface {
    * @private
    */
   loadDefaultPresets() {
-    // Standard badge with holocote
-    this.presets.set('standard-holocote', {
-      name: 'Standard with Holocote',
-      description: 'Standard badge printing with holocote overlay',
+    // Standard badge with holokote
+    this.presets.set('standard-holokote', {
+      name: 'Use TokoBadge Preset',
+      description: 'Use the TokoBadge printer preset (with HoloKote)',
       options: {
-        paperSize: 'Badge',
+        paperSize: 'CR80Card',
         orientation: 'portrait',
-        scale: 'fit',
+        scale: 'fill',
         copies: 1,
-        holocote: true,
+        holokote: true,
         quality: 'normal'
       }
     });
 
-    // Standard badge without holocote
-    this.presets.set('standard-no-holocote', {
-      name: 'Standard without Holocote',
-      description: 'Standard badge printing without holocote overlay',
+    // Standard badge without holokote
+    this.presets.set('standard-no-holokote', {
+      name: 'Use TokoBadge NoHoloKote Preset',
+      description: 'Use the TokoBadge NoHoloKote printer preset (no HoloKote)',
       options: {
-        paperSize: 'Badge',
+        paperSize: 'CR80Card',
         orientation: 'portrait',
-        scale: 'fit',
+        scale: 'fill',
         copies: 1,
-        holocote: false,
+        holokote: false,
         quality: 'normal'
       }
     });
 
-    // High quality with holocote
-    this.presets.set('high-quality-holocote', {
-      name: 'High Quality with Holocote',
-      description: 'High quality badge printing with holocote overlay',
+    // High quality with holokote
+    this.presets.set('high-quality-holokote', {
+      name: 'High Quality with HoloKote',
+      description: 'High quality badge printing with HoloKote overlay',
       options: {
-        paperSize: 'Badge',
+        paperSize: 'CR80Card',
         orientation: 'portrait',
-        scale: 'fit',
+        scale: 'fill',
         copies: 1,
-        holocote: true,
+        holokote: true,
         quality: 'high'
       }
     });
@@ -410,6 +439,39 @@ class PrinterInterface {
     if (this.statusCheckInterval) {
       clearInterval(this.statusCheckInterval);
       this.statusCheckInterval = null;
+    }
+  }
+
+  /**
+   * Get available printer options for current printer
+   * @returns {Promise<Object>} Available printer options
+   */
+  async getPrinterOptions() {
+    if (!this.selectedPrinter || process.platform !== 'darwin') {
+      return {};
+    }
+    
+    try {
+      const { stdout } = await execAsync(`lpoptions -p "${this.selectedPrinter.name}" -l`);
+      console.log('Available printer options:', stdout);
+      
+      const options = {};
+      
+      // Parse printer options
+      const lines = stdout.split('\n');
+      for (const line of lines) {
+        if (line.toLowerCase().includes('holokote') || line.toLowerCase().includes('holo-kote')) {
+          options.holocoteAvailable = true;
+          options.holocoteOptionName = line.split('/')[0].split(':')[0].trim();
+          options.holocoteOptions = line.match(/\*?([^\s]+)/g) || [];
+          console.log('Found HoloKote option:', line);
+        }
+      }
+      
+      return options;
+    } catch (error) {
+      console.warn('Could not get printer options:', error.message);
+      return {};
     }
   }
 
