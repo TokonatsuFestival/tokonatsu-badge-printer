@@ -273,7 +273,7 @@ class PrinterInterface {
    * @param {string} presetName - Name of the preset to use
    * @returns {Promise<boolean>} Success status
    */
-  async printDocument(documentPath, presetName = 'default') {
+  async printDocument(documentPath, presetName = 'standard-no-holocote') {
     if (!this.selectedPrinter) {
       throw new Error('No printer selected');
     }
@@ -342,41 +342,45 @@ class PrinterInterface {
    * @private
    */
   loadDefaultPresets() {
-    // Default badge printing preset
-    this.presets.set('default', {
-      name: 'Default Badge',
-      description: 'Standard badge printing settings',
+    // Standard badge with holocote
+    this.presets.set('standard-holocote', {
+      name: 'Standard with Holocote',
+      description: 'Standard badge printing with holocote overlay',
       options: {
-        paperSize: 'A4',
-        orientation: 'portrait',
-        scale: 'fit',
-        copies: 1
-      }
-    });
-
-    // High quality preset
-    this.presets.set('high-quality', {
-      name: 'High Quality',
-      description: 'High quality badge printing',
-      options: {
-        paperSize: 'A4',
+        paperSize: 'Badge',
         orientation: 'portrait',
         scale: 'fit',
         copies: 1,
+        holocote: true,
+        quality: 'normal'
+      }
+    });
+
+    // Standard badge without holocote
+    this.presets.set('standard-no-holocote', {
+      name: 'Standard without Holocote',
+      description: 'Standard badge printing without holocote overlay',
+      options: {
+        paperSize: 'Badge',
+        orientation: 'portrait',
+        scale: 'fit',
+        copies: 1,
+        holocote: false,
+        quality: 'normal'
+      }
+    });
+
+    // High quality with holocote
+    this.presets.set('high-quality-holocote', {
+      name: 'High Quality with Holocote',
+      description: 'High quality badge printing with holocote overlay',
+      options: {
+        paperSize: 'Badge',
+        orientation: 'portrait',
+        scale: 'fit',
+        copies: 1,
+        holocote: true,
         quality: 'high'
-      }
-    });
-
-    // Fast printing preset
-    this.presets.set('fast', {
-      name: 'Fast Print',
-      description: 'Fast badge printing for high volume',
-      options: {
-        paperSize: 'A4',
-        orientation: 'portrait',
-        scale: 'fit',
-        copies: 1,
-        quality: 'draft'
       }
     });
   }

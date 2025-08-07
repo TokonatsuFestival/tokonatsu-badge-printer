@@ -571,11 +571,11 @@ function validateUID(uid) {
         errorMessage = CONFIG.VALIDATION_MESSAGES.UID_INVALID;
         isValid = false;
     }
-    // Uniqueness validation
-    else if (appState.usedUIDs.has(trimmedUID)) {
-        errorMessage = CONFIG.VALIDATION_MESSAGES.UID_DUPLICATE;
-        isValid = false;
-    }
+    // Uniqueness validation temporarily disabled
+    // else if (appState.usedUIDs.has(trimmedUID)) {
+    //     errorMessage = CONFIG.VALIDATION_MESSAGES.UID_DUPLICATE;
+    //     isValid = false;
+    // }
     
     // Show error if invalid
     if (!isValid) {
@@ -766,7 +766,6 @@ function updateSubmitButtonState(isLoading) {
 // Check if form is valid
 function isFormValid() {
     const uidValid = elements.uidInput.value.trim() && 
-                    !appState.usedUIDs.has(elements.uidInput.value.trim()) &&
                     /^[a-zA-Z0-9-]+$/.test(elements.uidInput.value.trim());
     
     const badgeNameValid = elements.badgeNameInput.value.trim() && 
