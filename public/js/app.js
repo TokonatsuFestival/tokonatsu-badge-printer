@@ -82,6 +82,22 @@ socket.on('reconnect_failed', () => {
     showGlobalError('Connection lost. Please refresh the page.');
 });
 
+// Auto-reconnect to saved printer
+async function autoReconnectPrinter() {
+    try {
+        const savedPrinter = localStorage.getItem('selectedPrinter');
+        if (savedPrinter) {
+            const printer = JSON.parse(savedPrinter);
+            // Try to reconnect if saved within last 24 hours
+            if (Date.now() - printer.connectedAt < 24 * 60 * 60 * 1000) {
+                await connectToPrinter(printer.id);
+            }
+        }
+    } catch (error) {
+        console.log('Auto-reconnect failed:', error.message);
+    }
+}
+
 // DOM ready handler
 document.addEventListener('DOMContentLoaded', () => {
     console.log('Festival Badge Printer initialized');
@@ -89,6 +105,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initializeFormHandlers();
     loadTemplates();
     loadBadgeImages();
+    autoReconnectPrinter();
     loadUsedUIDs();
     loadQueueStatus();
     checkInitialPrinterStatus();
@@ -388,8 +405,21 @@ function renderTemplates(templates) {
         elements.templateGrid.appendChild(templateElement);
     });
     
-    // Auto-select first template
-    if (templates.length > 0) {
+    // Auto-select first template and hide section if only one template
+    if (templates.length === 1) {
+        const template = templates[0];
+        const firstRadio = document.querySelector(`#template-${template.id}`);
+        if (firstRadio) {
+            firstRadio.checked = true;
+            appState.selectedTemplate = template;
+            updateTemplatePreview(template);
+        }
+        // Hide template selection section
+        const templateSection = document.querySelector('.form-section:has(.template-selection)');
+        if (templateSection) {
+            templateSection.style.display = 'none';
+        }
+    } else if (templates.length > 1) {
         const firstTemplate = templates[0];
         const firstRadio = document.querySelector(`#template-${firstTemplate.id}`);
         if (firstRadio) {
@@ -723,7 +753,8 @@ async function handleFormSubmit(event) {
         appState.usedUIDs.add(formData.uid);
         
         // Show success message
-        showSuccessMessage(`Badge job created successfully! Job ID: ${result.jobId}`);
+        const jobId = result.jobId || result.id || Date.now().toString();
+        showSuccessMessage(`Badge job created successfully! Job ID: ${jobId}`);
         
         // Reset form
         handleFormReset();
@@ -739,7 +770,9 @@ async function handleFormSubmit(event) {
 
 // Handle form reset
 function handleFormReset() {
-    appState.selectedTemplate = null;
+    // Keep template and image selection, only clear input fields
+    elements.uidInput.value = '';
+    elements.badgeNameInput.value = '';
     
     // Clear error messages
     showFieldError('uid', '');
@@ -755,6 +788,11 @@ function handleFormReset() {
     
     // Update form validity
     updateFormValidity();
+    
+    // Regenerate live preview with empty inputs if template is selected
+    if (appState.selectedTemplate && appState.selectedImage) {
+        generateLiveBadgePreview();
+    }
 }
 
 // Update submit button loading state
@@ -1900,6 +1938,12 @@ async function connectToPrinter(printerId) {
         const data = await response.json();
         
         if (data.success) {
+            // Save selected printer to localStorage
+            localStorage.setItem('selectedPrinter', JSON.stringify({
+                id: printerId,
+                connectedAt: Date.now()
+            }));
+            
             showToastNotification(`Connected to printer: ${printerId}`, 'completed');
             
             // Update main printer status
@@ -2082,6 +2126,9 @@ async function disconnectPrinter() {
         const data = await response.json();
         
         if (data.success) {
+            // Clear saved printer from localStorage
+            localStorage.removeItem('selectedPrinter');
+            
             showToastNotification('Printer disconnected', 'info');
             
             // Update main printer status
