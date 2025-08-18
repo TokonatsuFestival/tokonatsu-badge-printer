@@ -3,6 +3,11 @@ const http = require('http');
 const socketIo = require('socket.io');
 const path = require('path');
 
+// Import utilities
+const logger = require('./utils/logger');
+const { errorMiddleware, asyncHandler } = require('./utils/errorHandler');
+const diagnostics = require('./utils/diagnostics');
+
 // Import services and models
 const DatabaseConnection = require('./database/connection');
 const BadgeJob = require('./models/BadgeJob');
@@ -91,10 +96,18 @@ async function createDatabaseTables(connection) {
   console.log('Database tables created successfully');
 }
 
-// Request logging middleware
+// Request logging middleware with timing
 app.use((req, res, next) => {
-  const timestamp = new Date().toISOString();
-  console.log(`[${timestamp}] ${req.method} ${req.url} - ${req.ip}`);
+  const startTime = Date.now();
+  
+  // Override res.end to capture response time
+  const originalEnd = res.end;
+  res.end = function(...args) {
+    const responseTime = Date.now() - startTime;
+    logger.access(req, res, responseTime);
+    originalEnd.apply(this, args);
+  };
+  
   next();
 });
 
@@ -113,6 +126,7 @@ app.use('/api/jobs', require('./routes/jobs'));
 app.use('/api/templates', require('./routes/templates'));
 app.use('/api/printers', require('./routes/printers'));
 app.use('/api/badge-images', require('./routes/badge-images'));
+app.use('/api/monitoring', require('./routes/monitoring'));
 
 // Main route
 app.get('/', (req, res) => {
@@ -120,13 +134,77 @@ app.get('/', (req, res) => {
 });
 
 // Health check endpoint
-app.get('/health', (req, res) => {
-  res.json({ 
-    status: 'ok', 
+app.get('/health', asyncHandler(async (req, res) => {
+  const healthStatus = {
+    status: 'ok',
     timestamp: new Date().toISOString(),
-    uptime: process.uptime()
+    uptime: process.uptime(),
+    services: {
+      database: dbConnection ? 'connected' : 'disconnected',
+      queueManager: queueManager ? 'initialized' : 'not-initialized'
+    }
+  };
+  
+  await logger.info('Health check requested', { 
+    ip: req.ip,
+    userAgent: req.get('User-Agent')
   });
-});
+  
+  res.json(healthStatus);
+}));
+
+// Diagnostics endpoint
+app.get('/api/diagnostics', asyncHandler(async (req, res) => {
+  const component = req.query.component;
+  
+  await logger.info('Diagnostics requested', { 
+    component: component || 'full',
+    ip: req.ip 
+  });
+  
+  let result;
+  if (component) {
+    result = await diagnostics.runSpecificDiagnostic(component);
+  } else {
+    result = await diagnostics.runFullDiagnostics();
+  }
+  
+  res.json(result);
+}));
+
+// Diagnostics report endpoint
+app.get('/api/diagnostics/report', asyncHandler(async (req, res) => {
+  const format = req.query.format || 'json';
+  
+  await logger.info('Diagnostics report requested', { 
+    format,
+    ip: req.ip 
+  });
+  
+  const report = await diagnostics.generateReport(format);
+  
+  if (format === 'text') {
+    res.set('Content-Type', 'text/plain');
+    res.send(report);
+  } else {
+    res.json(report);
+  }
+}));
+
+// Log statistics endpoint
+app.get('/api/logs/stats', asyncHandler(async (req, res) => {
+  const stats = await logger.getLogStats();
+  res.json(stats);
+}));
+
+// Recent logs endpoint
+app.get('/api/logs/recent', asyncHandler(async (req, res) => {
+  const category = req.query.category || 'combined';
+  const lines = parseInt(req.query.lines) || 100;
+  
+  const logs = await logger.getRecentLogs(category, lines);
+  res.json({ category, lines: logs.length, logs });
+}));
 
 // 404 handler for API routes
 app.use('/api/*', (req, res) => {
@@ -137,43 +215,51 @@ app.use('/api/*', (req, res) => {
   });
 });
 
-// Global error handling middleware
-app.use((err, req, res, next) => {
-  const timestamp = new Date().toISOString();
-  console.error(`[${timestamp}] Error:`, err.message);
-  console.error(err.stack);
-  
-  // Don't leak error details in production
-  const isDevelopment = process.env.NODE_ENV !== 'production';
-  
-  res.status(err.status || 500).json({
-    error: isDevelopment ? err.message : 'Internal server error',
-    timestamp,
-    ...(isDevelopment && { stack: err.stack })
-  });
-});
+// Use comprehensive error handling middleware
+app.use(errorMiddleware);
 
-// Socket.io connection handling
+// Socket.io connection handling with comprehensive logging
 io.on('connection', (socket) => {
-  const timestamp = new Date().toISOString();
-  console.log(`[${timestamp}] Client connected: ${socket.id}`);
+  logger.info('Client connected', { 
+    socketId: socket.id,
+    clientIP: socket.handshake.address
+  });
   
   // Send initial connection confirmation
   socket.emit('connected', { 
     message: 'Connected to Festival Badge Printer',
-    timestamp 
+    timestamp: new Date().toISOString()
   });
   
   // Handle client disconnection
   socket.on('disconnect', (reason) => {
-    const disconnectTime = new Date().toISOString();
-    console.log(`[${disconnectTime}] Client disconnected: ${socket.id} - Reason: ${reason}`);
+    logger.info('Client disconnected', { 
+      socketId: socket.id,
+      reason,
+      clientIP: socket.handshake.address
+    });
   });
   
   // Handle connection errors
   socket.on('error', (error) => {
-    const errorTime = new Date().toISOString();
-    console.error(`[${errorTime}] Socket error for ${socket.id}:`, error);
+    logger.error('Socket error occurred', { 
+      error,
+      socketId: socket.id,
+      clientIP: socket.handshake.address
+    });
+  });
+  
+  // Handle queue status requests
+  socket.on('requestQueueStatus', async () => {
+    try {
+      if (queueManager) {
+        const status = await queueManager.getQueueStatus();
+        socket.emit('queueStatus', status);
+      }
+    } catch (error) {
+      logger.error('Failed to send queue status', { error, socketId: socket.id });
+      socket.emit('error', { message: 'Failed to get queue status' });
+    }
   });
 });
 
@@ -184,49 +270,47 @@ const gracefulShutdown = async (signal) => {
   if (isShuttingDown) return;
   isShuttingDown = true;
   
-  console.log(`\nReceived ${signal}. Starting graceful shutdown...`);
+  await logger.info('Graceful shutdown initiated', { signal });
   
   try {
     // Stop queue manager
     if (queueManager) {
-      console.log('Stopping queue manager...');
+      await logger.info('Stopping queue manager');
       await queueManager.cleanup();
-      console.log('Queue manager stopped.');
+      await logger.info('Queue manager stopped');
     }
     
     // Close database connection
     if (dbConnection) {
-      console.log('Closing database connection...');
+      await logger.info('Closing database connection');
       await dbConnection.close();
-      console.log('Database connection closed.');
+      await logger.info('Database connection closed');
     }
     
     // Close server to stop accepting new connections
-    server.close((err) => {
+    server.close(async (err) => {
       if (err) {
-        console.error('Error during server shutdown:', err);
+        await logger.error('Error during server shutdown', { error: err });
         process.exit(1);
       }
       
-      console.log('HTTP server closed.');
+      await logger.info('HTTP server closed');
       
       // Close Socket.io connections
-      io.close(() => {
-        console.log('Socket.io server closed.');
-        
-        // Exit process
-        console.log('Graceful shutdown completed.');
+      io.close(async () => {
+        await logger.info('Socket.io server closed');
+        await logger.info('Graceful shutdown completed');
         process.exit(0);
       });
     });
   } catch (error) {
-    console.error('Error during graceful shutdown:', error);
+    await logger.error('Error during graceful shutdown', { error });
     process.exit(1);
   }
   
   // Force shutdown after 10 seconds
-  setTimeout(() => {
-    console.error('Forced shutdown after timeout');
+  setTimeout(async () => {
+    await logger.error('Forced shutdown after timeout');
     process.exit(1);
   }, 10000);
 };
@@ -236,35 +320,49 @@ process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
 // Handle uncaught exceptions
-process.on('uncaughtException', (err) => {
-  console.error('Uncaught Exception:', err);
+process.on('uncaughtException', async (err) => {
+  await logger.error('Uncaught Exception occurred', { error: err });
   gracefulShutdown('uncaughtException');
 });
 
 // Handle unhandled promise rejections
-process.on('unhandledRejection', (reason, promise) => {
-  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+process.on('unhandledRejection', async (reason, promise) => {
+  await logger.error('Unhandled Promise Rejection', { 
+    reason: reason instanceof Error ? reason : String(reason),
+    promise: promise.toString()
+  });
   gracefulShutdown('unhandledRejection');
 });
 
 // Initialize services
 const initializeServices = async () => {
   try {
+    await logger.info('Starting service initialization');
+    
     // Initialize database connection
+    await logger.info('Initializing database connection');
     dbConnection = new DatabaseConnection();
     await dbConnection.connect();
+    await logger.info('Database connection established');
     
     // Initialize database schema by calling createTables directly
+    await logger.info('Creating database tables');
     await createDatabaseTables(dbConnection);
+    await logger.info('Database tables created successfully');
     
     // Initialize models
     const badgeJobModel = new BadgeJob(dbConnection);
+    await logger.info('Badge job model initialized');
     
     // Initialize services
+    await logger.info('Initializing printer interface');
     const printerInterface = new PrinterInterface();
+    
+    await logger.info('Initializing template processor');
     const templateProcessor = new TemplateProcessor();
     
     // Initialize queue manager
+    await logger.info('Initializing queue manager');
     queueManager = new PrintQueueManager(
       badgeJobModel,
       printerInterface,
@@ -278,25 +376,54 @@ const initializeServices = async () => {
       }
     );
     
-    // Set up queue manager event listeners
-    queueManager.on('error', (error) => {
-      console.error('Queue Manager Error:', error);
+    // Set up queue manager event listeners with comprehensive logging
+    queueManager.on('error', async (error) => {
+      await logger.error('Queue Manager Error', { error });
     });
     
-    queueManager.on('jobAdded', (job) => {
-      console.log(`Job added to queue: ${job.id}`);
+    queueManager.on('jobAdded', async (job) => {
+      await logger.queue('Job added to queue', { 
+        jobId: job.id,
+        templateId: job.templateId,
+        uid: job.uid
+      });
     });
     
-    queueManager.on('jobCompleted', (job) => {
-      console.log(`Job completed: ${job.id}`);
+    queueManager.on('jobCompleted', async (job) => {
+      await logger.queue('Job completed successfully', { 
+        jobId: job.id,
+        templateId: job.templateId,
+        uid: job.uid,
+        processingTime: job.processedAt ? new Date(job.processedAt) - new Date(job.createdAt) : null
+      });
     });
     
-    queueManager.on('jobFailed', (job, error) => {
-      console.error(`Job failed: ${job.id} - ${error.message}`);
+    queueManager.on('jobFailed', async (job, error) => {
+      await logger.error('Job failed', { 
+        error,
+        jobId: job.id,
+        templateId: job.templateId,
+        uid: job.uid,
+        retryCount: job.retryCount
+      });
     });
     
-    queueManager.on('jobCancelled', (job) => {
-      console.log(`Job cancelled: ${job.id}`);
+    queueManager.on('jobCancelled', async (job) => {
+      await logger.queue('Job cancelled', { 
+        jobId: job.id,
+        templateId: job.templateId,
+        uid: job.uid
+      });
+    });
+    
+    queueManager.on('jobRetry', async (job, attempt) => {
+      await logger.warn('Job retry attempted', { 
+        jobId: job.id,
+        templateId: job.templateId,
+        uid: job.uid,
+        attempt,
+        maxRetries: queueManager.options.maxRetries
+      });
     });
     
     // Make services available to routes
@@ -304,10 +431,10 @@ const initializeServices = async () => {
     app.set('dbConnection', dbConnection);
     app.set('printerInterface', printerInterface);
     
-    console.log('Services initialized successfully');
+    await logger.info('All services initialized successfully');
     
   } catch (error) {
-    console.error('Failed to initialize services:', error);
+    await logger.error('Failed to initialize services', { error });
     process.exit(1);
   }
 };
@@ -318,24 +445,27 @@ const startServer = async () => {
     // Initialize services first
     await initializeServices();
     
-    server.listen(PORT, () => {
-      const timestamp = new Date().toISOString();
-      console.log(`[${timestamp}] Festival Badge Printer server running on port ${PORT}`);
-      console.log(`[${timestamp}] Environment: ${process.env.NODE_ENV || 'development'}`);
-      console.log(`[${timestamp}] Process ID: ${process.pid}`);
+    server.listen(PORT, async () => {
+      await logger.info('Festival Badge Printer server started', {
+        port: PORT,
+        environment: process.env.NODE_ENV || 'development',
+        processId: process.pid,
+        nodeVersion: process.version,
+        platform: process.platform
+      });
     });
     
-    server.on('error', (err) => {
+    server.on('error', async (err) => {
       if (err.code === 'EADDRINUSE') {
-        console.error(`Port ${PORT} is already in use`);
+        await logger.error('Port already in use', { port: PORT, error: err });
         process.exit(1);
       } else {
-        console.error('Server error:', err);
+        await logger.error('Server error occurred', { error: err });
         process.exit(1);
       }
     });
   } catch (error) {
-    console.error('Failed to start server:', error);
+    await logger.error('Failed to start server', { error });
     process.exit(1);
   }
 };

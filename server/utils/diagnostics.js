@@ -115,9 +115,9 @@ class DiagnosticTools {
         // Check table integrity
         for (const table of results.tables) {
           try {
-            await db.get(`SELECT COUNT(*) as count FROM ${table.name}`);
+            await db.get(`SELECT COUNT(*) as count FROM ${table}`);
           } catch (error) {
-            results.errors.push(`Table ${table.name} integrity check failed: ${error.message}`);
+            results.errors.push(`Table ${table} integrity check failed: ${error.message}`);
           }
         }
 

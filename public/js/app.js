@@ -2722,3 +2722,488 @@ function resetTextPositions() {
     loadEditorPositions();
     drawEditor();
 }
+
+// System Monitor functionality
+const SystemMonitor = {
+    isOpen: false,
+    currentTab: 'health',
+    refreshIntervals: {},
+
+    init() {
+        this.bindEvents();
+        this.setupTabs();
+    },
+
+    bindEvents() {
+        // System monitor button
+        const systemMonitorBtn = document.getElementById('system-monitor-btn');
+        if (systemMonitorBtn) {
+            systemMonitorBtn.addEventListener('click', () => this.open());
+        }
+
+        // Modal close events
+        const closeBtn = document.getElementById('system-monitor-close');
+        const overlay = document.getElementById('system-monitor-overlay');
+        
+        if (closeBtn) closeBtn.addEventListener('click', () => this.close());
+        if (overlay) overlay.addEventListener('click', () => this.close());
+
+        // Tab buttons
+        document.querySelectorAll('.monitor-tabs .tab-button').forEach(button => {
+            button.addEventListener('click', (e) => {
+                const tab = e.target.dataset.tab;
+                this.switchTab(tab);
+            });
+        });
+
+        // Refresh buttons
+        this.bindRefreshButtons();
+    },
+
+    bindRefreshButtons() {
+        const refreshButtons = {
+            'refresh-health': () => this.loadHealth(),
+            'detailed-health': () => this.loadHealth(true),
+            'refresh-errors': () => this.loadErrors(),
+            'refresh-logs': () => this.loadLogs(),
+            'refresh-alerts': () => this.loadAlerts(),
+            'run-full-diagnostics': () => this.runDiagnostics('full'),
+            'run-quick-diagnostics': () => this.runDiagnostics('quick')
+        };
+
+        Object.entries(refreshButtons).forEach(([id, handler]) => {
+            const button = document.getElementById(id);
+            if (button) {
+                button.addEventListener('click', handler);
+            }
+        });
+
+        // Dropdown change handlers
+        const errorTimeRange = document.getElementById('error-time-range');
+        if (errorTimeRange) {
+            errorTimeRange.addEventListener('change', () => this.loadErrors());
+        }
+
+        const logCategory = document.getElementById('log-category');
+        const logLines = document.getElementById('log-lines');
+        if (logCategory) logCategory.addEventListener('change', () => this.loadLogs());
+        if (logLines) logLines.addEventListener('change', () => this.loadLogs());
+    },
+
+    setupTabs() {
+        // Initialize tab functionality
+        const tabButtons = document.querySelectorAll('.monitor-tabs .tab-button');
+        const tabPanels = document.querySelectorAll('.tab-panel');
+
+        tabButtons.forEach(button => {
+            button.addEventListener('click', (e) => {
+                const targetTab = e.target.dataset.tab;
+                
+                // Update active states
+                tabButtons.forEach(btn => btn.classList.remove('active'));
+                tabPanels.forEach(panel => panel.classList.remove('active'));
+                
+                e.target.classList.add('active');
+                document.getElementById(`${targetTab}-panel`).classList.add('active');
+                
+                this.currentTab = targetTab;
+                this.loadTabContent(targetTab);
+            });
+        });
+    },
+
+    open() {
+        const modal = document.getElementById('system-monitor-modal');
+        if (modal) {
+            modal.style.display = 'block';
+            modal.setAttribute('aria-hidden', 'false');
+            this.isOpen = true;
+            
+            // Load initial content
+            this.loadTabContent(this.currentTab);
+            
+            // Set up auto-refresh for certain tabs
+            this.startAutoRefresh();
+        }
+    },
+
+    close() {
+        const modal = document.getElementById('system-monitor-modal');
+        if (modal) {
+            modal.style.display = 'none';
+            modal.setAttribute('aria-hidden', 'true');
+            this.isOpen = false;
+            
+            // Clear auto-refresh intervals
+            this.stopAutoRefresh();
+        }
+    },
+
+    switchTab(tab) {
+        this.currentTab = tab;
+        this.loadTabContent(tab);
+    },
+
+    loadTabContent(tab) {
+        switch (tab) {
+            case 'health':
+                this.loadHealth();
+                break;
+            case 'errors':
+                this.loadErrors();
+                break;
+            case 'logs':
+                this.loadLogs();
+                break;
+            case 'diagnostics':
+                this.loadDiagnosticHistory();
+                break;
+            case 'alerts':
+                this.loadAlerts();
+                break;
+        }
+    },
+
+    async loadHealth(detailed = false) {
+        const container = document.getElementById('health-overview');
+        if (!container) return;
+
+        container.innerHTML = '<div class="health-loading">Loading system health...</div>';
+
+        try {
+            const url = detailed ? '/api/monitoring/health?detailed=true' : '/api/monitoring/health';
+            const response = await fetch(url);
+            const data = await response.json();
+
+            this.renderHealthStatus(container, data);
+        } catch (error) {
+            container.innerHTML = `<div class="error">Failed to load health status: ${error.message}</div>`;
+        }
+    },
+
+    renderHealthStatus(container, data) {
+        const statusClass = data.status === 'healthy' ? 'healthy' : 
+                           data.status === 'degraded' ? 'warning' : 'error';
+
+        let html = `
+            <div class="health-card ${statusClass}">
+                <h4>Overall Status</h4>
+                <div class="status ${statusClass}">${data.status}</div>
+                <div class="details">
+                    Uptime: ${Math.floor(data.uptime / 60)} minutes<br>
+                    Environment: ${data.environment}
+                </div>
+            </div>
+        `;
+
+        if (data.diagnostics) {
+            // Add detailed diagnostic cards
+            Object.entries(data.diagnostics).forEach(([component, result]) => {
+                const componentStatus = result.errors && result.errors.length > 0 ? 'error' : 'healthy';
+                html += `
+                    <div class="health-card ${componentStatus}">
+                        <h4>${component.charAt(0).toUpperCase() + component.slice(1)}</h4>
+                        <div class="status ${componentStatus}">
+                            ${componentStatus === 'healthy' ? 'OK' : 'Issues'}
+                        </div>
+                        <div class="details">
+                            ${result.errors ? result.errors.slice(0, 2).join('<br>') : 'All checks passed'}
+                        </div>
+                    </div>
+                `;
+            });
+        }
+
+        container.innerHTML = html;
+    },
+
+    async loadErrors() {
+        const container = document.getElementById('error-summary');
+        const recentContainer = document.getElementById('recent-errors .error-list');
+        if (!container || !recentContainer) return;
+
+        container.innerHTML = '<div class="error-loading">Loading error summary...</div>';
+        recentContainer.innerHTML = '<div class="error-loading">Loading recent errors...</div>';
+
+        try {
+            const hours = document.getElementById('error-time-range')?.value || 24;
+            const response = await fetch(`/api/monitoring/errors?hours=${hours}`);
+            const data = await response.json();
+
+            this.renderErrorSummary(container, data);
+            this.renderRecentErrors(recentContainer, data.recentErrors);
+        } catch (error) {
+            container.innerHTML = `<div class="error">Failed to load errors: ${error.message}</div>`;
+            recentContainer.innerHTML = `<div class="error">Failed to load recent errors: ${error.message}</div>`;
+        }
+    },
+
+    renderErrorSummary(container, data) {
+        const html = `
+            <div class="error-stat">
+                <span class="number">${data.totalErrors}</span>
+                <span class="label">Total Errors</span>
+            </div>
+            <div class="error-stat">
+                <span class="number">${data.uniqueErrorTypes}</span>
+                <span class="label">Error Types</span>
+            </div>
+            <div class="error-stat">
+                <span class="number">${data.timeRange.hours}h</span>
+                <span class="label">Time Range</span>
+            </div>
+        `;
+        container.innerHTML = html;
+    },
+
+    renderRecentErrors(container, errors) {
+        if (!errors || errors.length === 0) {
+            container.innerHTML = '<div class="no-errors">No recent errors found</div>';
+            return;
+        }
+
+        const html = errors.map(error => `
+            <div class="error-item">
+                <div class="error-time">${new Date(error.timestamp).toLocaleString()}</div>
+                <div class="error-message">${error.message}</div>
+                ${error.context ? `<div class="error-context">${JSON.stringify(error.context, null, 2)}</div>` : ''}
+            </div>
+        `).join('');
+
+        container.innerHTML = html;
+    },
+
+    async loadLogs() {
+        const container = document.getElementById('log-display');
+        if (!container) return;
+
+        container.innerHTML = '<div class="log-loading">Loading logs...</div>';
+
+        try {
+            const category = document.getElementById('log-category')?.value || 'combined';
+            const lines = document.getElementById('log-lines')?.value || 100;
+            
+            const response = await fetch(`/api/monitoring/logs/${category}?lines=${lines}`);
+            const data = await response.json();
+
+            this.renderLogs(container, data.logs);
+        } catch (error) {
+            container.innerHTML = `Failed to load logs: ${error.message}`;
+        }
+    },
+
+    renderLogs(container, logs) {
+        if (!logs || logs.length === 0) {
+            container.innerHTML = 'No logs found';
+            return;
+        }
+
+        const html = logs.map(log => `
+            <div class="log-entry">
+                <span class="log-timestamp">${log.timestamp}</span>
+                <span class="log-level ${log.level}">[${log.level}]</span>
+                <span class="log-message">${log.message}</span>
+            </div>
+        `).join('');
+
+        container.innerHTML = html;
+        container.scrollTop = container.scrollHeight;
+    },
+
+    async loadAlerts() {
+        const container = document.getElementById('alert-display');
+        if (!container) return;
+
+        container.innerHTML = '<div class="alert-loading">Loading system alerts...</div>';
+
+        try {
+            const response = await fetch('/api/monitoring/alerts');
+            const data = await response.json();
+
+            this.renderAlerts(container, data.alerts);
+        } catch (error) {
+            container.innerHTML = `<div class="error">Failed to load alerts: ${error.message}</div>`;
+        }
+    },
+
+    renderAlerts(container, alerts) {
+        if (!alerts || alerts.length === 0) {
+            container.innerHTML = '<div class="no-alerts">No active alerts</div>';
+            return;
+        }
+
+        const html = alerts.map(alert => `
+            <div class="alert-item ${alert.type}">
+                <div class="alert-header">
+                    <span class="alert-type">${alert.type}</span>
+                    <span class="alert-time">${new Date(alert.timestamp).toLocaleString()}</span>
+                </div>
+                <div class="alert-message">${alert.message}</div>
+                <div class="alert-details">
+                    Category: ${alert.category} | 
+                    Value: ${alert.value}
+                    ${alert.threshold ? ` | Threshold: ${alert.threshold}` : ''}
+                </div>
+            </div>
+        `).join('');
+
+        container.innerHTML = html;
+    },
+
+    async runDiagnostics(type) {
+        const container = document.getElementById('diagnostic-results');
+        if (!container) return;
+
+        const button = document.getElementById(type === 'full' ? 'run-full-diagnostics' : 'run-quick-diagnostics');
+        if (button) {
+            button.disabled = true;
+            button.innerHTML = '<span class="loading-spinner"></span> Running...';
+        }
+
+        container.innerHTML = '<div class="diagnostic-loading">Running diagnostics...</div>';
+
+        try {
+            let response;
+            if (type === 'full') {
+                response = await fetch('/api/diagnostics');
+            } else {
+                // Run quick diagnostics (just a few components)
+                const components = ['system', 'database', 'services'];
+                const results = await Promise.all(
+                    components.map(comp => 
+                        fetch('/api/monitoring/diagnostics/run', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ component: comp })
+                        }).then(r => r.json())
+                    )
+                );
+                response = { ok: true };
+                response.json = () => Promise.resolve({ results });
+            }
+
+            const data = await response.json();
+            this.renderDiagnosticResults(container, data);
+        } catch (error) {
+            container.innerHTML = `<div class="error">Failed to run diagnostics: ${error.message}</div>`;
+        } finally {
+            if (button) {
+                button.disabled = false;
+                button.innerHTML = type === 'full' ? 'Run Full Diagnostics' : 'Quick Check';
+            }
+        }
+    },
+
+    renderDiagnosticResults(container, data) {
+        let html = '';
+
+        if (data.results) {
+            // Quick diagnostics results
+            data.results.forEach(result => {
+                const status = result.result.errors && result.result.errors.length > 0 ? 'error' : 'ok';
+                html += `
+                    <div class="diagnostic-section">
+                        <h4>
+                            ${result.component.charAt(0).toUpperCase() + result.component.slice(1)}
+                            <span class="diagnostic-status ${status}">${status}</span>
+                        </h4>
+                        <div class="diagnostic-details">
+                            ${result.result.errors && result.result.errors.length > 0 ? 
+                                `<ul>${result.result.errors.map(err => `<li>${err}</li>`).join('')}</ul>` :
+                                'All checks passed'
+                            }
+                        </div>
+                    </div>
+                `;
+            });
+        } else {
+            // Full diagnostics results
+            Object.entries(data).forEach(([component, result]) => {
+                if (component === 'timestamp') return;
+                
+                const status = result.errors && result.errors.length > 0 ? 'error' : 'ok';
+                html += `
+                    <div class="diagnostic-section">
+                        <h4>
+                            ${component.charAt(0).toUpperCase() + component.slice(1)}
+                            <span class="diagnostic-status ${status}">${status}</span>
+                        </h4>
+                        <div class="diagnostic-details">
+                            ${result.errors && result.errors.length > 0 ? 
+                                `<ul>${result.errors.map(err => `<li>${err}</li>`).join('')}</ul>` :
+                                'All checks passed'
+                            }
+                        </div>
+                    </div>
+                `;
+            });
+        }
+
+        container.innerHTML = html;
+    },
+
+    async loadDiagnosticHistory() {
+        const container = document.getElementById('diagnostic-history .history-list');
+        if (!container) return;
+
+        try {
+            const response = await fetch('/api/monitoring/diagnostics/history');
+            const data = await response.json();
+
+            this.renderDiagnosticHistory(container, data.history);
+        } catch (error) {
+            container.innerHTML = `<div class="error">Failed to load diagnostic history: ${error.message}</div>`;
+        }
+    },
+
+    renderDiagnosticHistory(container, history) {
+        if (!history || history.length === 0) {
+            container.innerHTML = '<div class="no-history">No diagnostic history available</div>';
+            return;
+        }
+
+        const html = history.map(item => `
+            <div class="history-item">
+                <div class="history-info">
+                    <div class="history-component">${item.component}</div>
+                    <div class="history-time">${new Date(item.timestamp).toLocaleString()}</div>
+                </div>
+                <div class="history-status ${item.summary.status}">${item.summary.status}</div>
+            </div>
+        `).join('');
+
+        container.innerHTML = html;
+    },
+
+    startAutoRefresh() {
+        // Auto-refresh health status every 30 seconds
+        if (this.currentTab === 'health') {
+            this.refreshIntervals.health = setInterval(() => {
+                if (this.isOpen && this.currentTab === 'health') {
+                    this.loadHealth();
+                }
+            }, 30000);
+        }
+
+        // Auto-refresh alerts every 60 seconds
+        if (this.currentTab === 'alerts') {
+            this.refreshIntervals.alerts = setInterval(() => {
+                if (this.isOpen && this.currentTab === 'alerts') {
+                    this.loadAlerts();
+                }
+            }, 60000);
+        }
+    },
+
+    stopAutoRefresh() {
+        Object.values(this.refreshIntervals).forEach(interval => {
+            clearInterval(interval);
+        });
+        this.refreshIntervals = {};
+    }
+};
+
+// Initialize system monitor when DOM is loaded
+document.addEventListener('DOMContentLoaded', () => {
+    SystemMonitor.init();
+});

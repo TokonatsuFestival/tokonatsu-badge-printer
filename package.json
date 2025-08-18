@@ -7,7 +7,13 @@
     "start": "node server/index.js",
     "dev": "nodemon server/index.js",
     "test": "jest",
-    "test:watch": "jest --watch"
+    "test:watch": "jest --watch",
+    "test:integration": "jest --testPathPattern=integration --runInBand --verbose",
+    "test:performance": "jest --testPathPattern=performance --runInBand --verbose",
+    "test:concurrent": "jest --testPathPattern=concurrent --runInBand --verbose",
+    "test:printer": "jest --testPathPattern=printer-failure --runInBand --verbose",
+    "test:templates": "jest --testPathPattern=template-compatibility --runInBand --verbose",
+    "test:all-integration": "jest --testPathPattern='(integration|performance|concurrent|printer-failure|template-compatibility)' --runInBand --verbose --detectOpenHandles"
   },
   "keywords": [
     "badge",

@@ -10,12 +10,19 @@
     <div class="container">
         <header>
             <h1>Festival Badge Printer</h1>
-            <div class="printer-status" id="printer-status" role="status" aria-live="polite">
-                <span class="status-indicator" id="status-indicator"></span>
-                <span class="status-text" id="status-text">Checking printer connection...</span>
-                <button class="btn btn-small btn-secondary" id="printer-setup-btn" aria-label="Open printer setup">
-                    Setup
-                </button>
+            <div class="status-bar">
+                <div class="printer-status" id="printer-status" role="status" aria-live="polite">
+                    <span class="status-indicator" id="status-indicator"></span>
+                    <span class="status-text" id="status-text">Checking printer connection...</span>
+                    <button class="btn btn-small btn-secondary" id="printer-setup-btn" aria-label="Open printer setup">
+                        Setup
+                    </button>
+                </div>
+                <div class="system-status" id="system-status">
+                    <button class="btn btn-small btn-secondary" id="system-monitor-btn" aria-label="Open system monitor">
+                        System Monitor
+                    </button>
+                </div>
             </div>
         </header>
 
@@ -384,6 +391,130 @@
         </div>
     </template>
     
+    <!-- System Monitor Modal -->
+    <div class="modal" id="system-monitor-modal" role="dialog" aria-labelledby="system-monitor-title" aria-hidden="true">
+        <div class="modal-overlay" id="system-monitor-overlay"></div>
+        <div class="modal-content modal-large">
+            <div class="modal-header">
+                <h2 id="system-monitor-title">System Monitor & Diagnostics</h2>
+                <button class="modal-close" id="system-monitor-close" aria-label="Close system monitor">×</button>
+            </div>
+            
+            <div class="modal-body">
+                <div class="monitor-tabs">
+                    <button class="tab-button active" data-tab="health" aria-controls="health-panel">Health</button>
+                    <button class="tab-button" data-tab="errors" aria-controls="errors-panel">Errors</button>
+                    <button class="tab-button" data-tab="logs" aria-controls="logs-panel">Logs</button>
+                    <button class="tab-button" data-tab="diagnostics" aria-controls="diagnostics-panel">Diagnostics</button>
+                    <button class="tab-button" data-tab="alerts" aria-controls="alerts-panel">Alerts</button>
+                </div>
+
+                <!-- Health Tab -->
+                <div class="tab-panel active" id="health-panel" role="tabpanel">
+                    <div class="panel-section">
+                        <div class="health-overview" id="health-overview">
+                            <div class="health-loading">Loading system health...</div>
+                        </div>
+                        
+                        <div class="health-actions">
+                            <button class="btn btn-primary" id="refresh-health">Refresh Health</button>
+                            <button class="btn btn-secondary" id="detailed-health">Detailed Check</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Errors Tab -->
+                <div class="tab-panel" id="errors-panel" role="tabpanel">
+                    <div class="panel-section">
+                        <div class="error-controls">
+                            <label>Time Range: 
+                                <select id="error-time-range">
+                                    <option value="1">Last Hour</option>
+                                    <option value="6">Last 6 Hours</option>
+                                    <option value="24" selected>Last 24 Hours</option>
+                                    <option value="168">Last Week</option>
+                                </select>
+                            </label>
+                            <button class="btn btn-secondary" id="refresh-errors">Refresh</button>
+                        </div>
+                        
+                        <div class="error-summary" id="error-summary">
+                            <div class="error-loading">Loading error summary...</div>
+                        </div>
+                        
+                        <div class="recent-errors" id="recent-errors">
+                            <h3>Recent Errors</h3>
+                            <div class="error-list"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Logs Tab -->
+                <div class="tab-panel" id="logs-panel" role="tabpanel">
+                    <div class="panel-section">
+                        <div class="log-controls">
+                            <label>Category: 
+                                <select id="log-category">
+                                    <option value="combined">All Logs</option>
+                                    <option value="error">Errors Only</option>
+                                    <option value="access">Access Logs</option>
+                                    <option value="printer">Printer Logs</option>
+                                    <option value="template">Template Logs</option>
+                                    <option value="queue">Queue Logs</option>
+                                </select>
+                            </label>
+                            <label>Lines: 
+                                <select id="log-lines">
+                                    <option value="50">50</option>
+                                    <option value="100" selected>100</option>
+                                    <option value="200">200</option>
+                                    <option value="500">500</option>
+                                </select>
+                            </label>
+                            <button class="btn btn-secondary" id="refresh-logs">Refresh</button>
+                        </div>
+                        
+                        <div class="log-display" id="log-display">
+                            <div class="log-loading">Loading logs...</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Diagnostics Tab -->
+                <div class="tab-panel" id="diagnostics-panel" role="tabpanel">
+                    <div class="panel-section">
+                        <div class="diagnostic-controls">
+                            <button class="btn btn-primary" id="run-full-diagnostics">Run Full Diagnostics</button>
+                            <button class="btn btn-secondary" id="run-quick-diagnostics">Quick Check</button>
+                        </div>
+                        
+                        <div class="diagnostic-results" id="diagnostic-results">
+                            <div class="diagnostic-loading">Click "Run Full Diagnostics" to check system health</div>
+                        </div>
+                        
+                        <div class="diagnostic-history" id="diagnostic-history">
+                            <h3>Recent Diagnostic Runs</h3>
+                            <div class="history-list"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Alerts Tab -->
+                <div class="tab-panel" id="alerts-panel" role="tabpanel">
+                    <div class="panel-section">
+                        <div class="alert-controls">
+                            <button class="btn btn-secondary" id="refresh-alerts">Refresh Alerts</button>
+                        </div>
+                        
+                        <div class="alert-display" id="alert-display">
+                            <div class="alert-loading">Loading system alerts...</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="/socket.io/socket.io.js"></script>
     <script src="/js/app.js"></script>
 </body>
