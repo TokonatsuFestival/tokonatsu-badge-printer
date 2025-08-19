@@ -5,7 +5,7 @@ A web-based badge printing system for festival registration teams.
 ## Features
 
 - Web-based interface for badge creation
-- Adobe InDesign template integration
+- Internal template system
 - USB printer support with presets
 - Real-time print queue management
 - Multi-user support for registration teams

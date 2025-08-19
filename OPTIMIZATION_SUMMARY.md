@@ -89,7 +89,7 @@ This document summarizes the comprehensive integration testing and optimization 
 - Text positioning with various lengths
 - Template processing speed validation
 - Error handling for invalid templates
-- File format compatibility (InDesign, PNG, JPG, PDF)
+- File format compatibility (PNG, JPG, PDF)
 
 **Key Features Tested:**
 - Template structure validation

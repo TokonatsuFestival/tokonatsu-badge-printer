@@ -47,19 +47,17 @@ npm install --production
 
 ### 3. Configure Templates
 
-1. Place your Adobe InDesign template files in the `templates/` directory
+1. Place your badge template images in the `public/images/badges/` directory
 2. Update template configurations in the database or configuration files
 3. Ensure template preview images are available
 
 ```bash
 # Template directory structure
-templates/
-├── badge-template-1.indd
-├── badge-template-2.indd
-├── previews/
-│   ├── badge-template-1.png
-│   └── badge-template-2.png
-└── background.png
+public/images/badges/
+├── Byakko2025.png
+├── Genbu2025.png
+├── Seiryu2025.png
+└── Suzaku2025.png
 ```
 
 ### 4. Database Setup
