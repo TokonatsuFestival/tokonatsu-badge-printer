@@ -218,6 +218,15 @@ class TemplateProcessor {
    */
   async validateTemplate(templatePath) {
     try {
+      // Handle internal templates
+      if (templatePath && templatePath.startsWith('internal://')) {
+        return {
+          isValid: true,
+          type: 'internal',
+          templateId: templatePath.replace('internal://', '')
+        };
+      }
+
       // Check if file exists
       if (!fs.existsSync(templatePath)) {
         return {

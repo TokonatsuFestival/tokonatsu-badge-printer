@@ -19,8 +19,8 @@ class Template {
     // Validate text fields structure
     this.validateTextFields(textFields);
 
-    // Validate file exists
-    if (!fs.existsSync(filePath)) {
+    // Validate file exists (skip for internal templates)
+    if (!filePath.startsWith('internal://') && !fs.existsSync(filePath)) {
       throw new Error(`Template file does not exist: ${filePath}`);
     }
 
@@ -105,8 +105,8 @@ class Template {
           updates.push(`${this.camelToSnake(key)} = ?`);
           params.push(JSON.stringify(updateData[key]));
         } else if (key === 'filePath' && updateData[key]) {
-          // Validate file exists
-          if (!fs.existsSync(updateData[key])) {
+          // Validate file exists (skip for internal templates)
+          if (!updateData[key].startsWith('internal://') && !fs.existsSync(updateData[key])) {
             throw new Error(`Template file does not exist: ${updateData[key]}`);
           }
           updates.push(`${this.camelToSnake(key)} = ?`);
@@ -175,6 +175,11 @@ class Template {
     const template = await this.findById(id);
     if (!template) {
       throw new Error(`Template with ID ${id} not found`);
+    }
+
+    // Handle internal templates
+    if (template.filePath && template.filePath.startsWith('internal://')) {
+      return true; // Internal templates don't require file validation
     }
 
     if (!fs.existsSync(template.filePath)) {
