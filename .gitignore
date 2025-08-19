@@ -53,3 +53,7 @@ pids
 
 # Cleanup script (temporary)
 cleanup-test-data.js
+
+
+# Add the Kiro folder for the moment
+.kiro/
