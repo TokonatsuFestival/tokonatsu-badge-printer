@@ -68,3 +68,13 @@ For more information about our event, visit our [website](https://www.tokonatsu.
 │   └── index.html   # Main HTML file
 └── templates/       # Badge template files
 ```
+
+## Screen Shots
+
+### Main Interface
+
+![Main Interface](img/main-interface.png)
+
+### Text Position
+
+![Text Positioning](img/text-position.png)
